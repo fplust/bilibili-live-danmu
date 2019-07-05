@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use bincode;
 use byteorder::{BigEndian, ReadBytesExt};
+use chrono::{TimeZone, Local};
 
 #[derive(Serialize)]
 struct Obj {
@@ -203,9 +204,12 @@ fn process_message(json: Danmu) {
     match json.cmd.as_ref() {
         "DANMU_MSG" => {
             let info = json.info.unwrap();
+            let info = info.as_array().unwrap();
             let danmu = &info[1].as_str().unwrap();
+            let ts = &info.last().unwrap().get("ts").unwrap();
+            let date_time = Local.timestamp(ts.as_i64().unwrap(), 0);
             let user = &info[2][1].as_str().unwrap();
-            println!("{}: {}", user, danmu);
+            println!("[{}] {}: {}", date_time.format("%Y-%m-%d %H:%M:%S").to_string(), user, danmu);
         },
         "SEND_GIFT" => {
             let data = json.data.unwrap();
