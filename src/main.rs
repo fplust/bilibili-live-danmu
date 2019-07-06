@@ -109,12 +109,12 @@ impl Room {
         //     .unwrap()
         //     .connect_insecure()
         //     .unwrap();
-        let client = Arc::new(Mutex::new(
-            ClientBuilder::new("wss://broadcastlv.chat.bilibili.com/sub")
-                .unwrap()
-                .connect_secure(None)
-                .unwrap(),
-        ));
+        let c = ClientBuilder::new("wss://broadcastlv.chat.bilibili.com/sub")
+            .unwrap()
+            .connect_secure(None)
+            .unwrap();
+        c.set_nonblocking(true).unwrap();
+        let client = Arc::new(Mutex::new(c));
         // let (receiver, mut sender) = client.split().unwrap();
         let obj = Obj::new(roomid);
         let obj_bytes = serde_json::to_vec(&obj).unwrap();
@@ -123,16 +123,29 @@ impl Room {
         let pkg = Pkg::new(obj_bytes, 7).into_bytes();
 
         let sender = client.clone();
-        sender
-            .lock()
-            .unwrap()
-            .send_message(&Message::binary(pkg))
-            .unwrap();
+        {
+            sender
+                .lock()
+                .unwrap()
+                .send_message(&Message::binary(pkg))
+                .unwrap();
+        }
 
         let beat_thread = thread::spawn(move || {
             let messages = Message::binary(heart);
             loop {
-                sender.lock().unwrap().send_message(&messages).unwrap();
+                {
+                    let lock = sender.lock();
+                    if let Ok(mut s) = lock {
+                        if let Ok(_) = s.send_message(&messages) {
+                            // println!("send heart beat!");
+                        } else {
+                            println!("send heart beat error!");
+                        };
+                    } else {
+                        println!("sender get lock error!");
+                    }
+                }
                 thread::sleep(time::Duration::from_secs(30));
             }
         });
@@ -184,7 +197,17 @@ impl Iterator for RecIntoIterator {
     fn next(&mut self) -> Option<Self::Item> {
         let mut msg = None;
         while msg.is_none() {
-            msg = self.client.lock().unwrap().recv_message().ok();
+            {
+                let lock = self.client.lock();
+                if let Ok(mut s) = lock {
+                    let recv = s.recv_message();
+                    // println!("{:?}", recv);
+                    msg = recv.ok();
+                // println!("get messages ok!");
+                } else {
+                    println!("receiver get lock error!");
+                }
+            }
             thread::sleep(time::Duration::from_secs(1));
         }
         msg
