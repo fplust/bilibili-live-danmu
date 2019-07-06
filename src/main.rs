@@ -1,22 +1,22 @@
-use std::convert::TryInto;
-use std::thread;
-use std::io::Cursor;
-use std::time;
+use bincode;
+use byteorder::{BigEndian, ReadBytesExt};
+use chrono::{Local, TimeZone};
 use clap::{App, Arg};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::convert::TryInto;
+use std::io::Cursor;
+use std::thread;
+use std::time;
 use websocket::{
-    ClientBuilder,
-    Message,
-    OwnedMessage,
+    receiver::Reader,
     // client::sync::Client,
     // stream::sync::NetworkStream,
     stream::sync::TcpStream,
-    receiver::Reader,
+    ClientBuilder,
+    Message,
+    OwnedMessage,
 };
-use serde::{Deserialize, Serialize};
-use serde_json;
-use bincode;
-use byteorder::{BigEndian, ReadBytesExt};
-use chrono::{TimeZone, Local};
 
 #[derive(Serialize)]
 struct Obj {
@@ -31,7 +31,7 @@ impl Obj {
     fn new(roomid: i32) -> Self {
         Self {
             uid: 0,
-            roomid: roomid,
+            roomid,
             protover: 1,
             platform: String::from("web"),
             clientver: String::from("1.5.15"),
@@ -54,8 +54,8 @@ impl Header {
             len: 16 + len,
             a: 16,
             b: 1,
-            dtype: dtype,
-            c: 1
+            dtype,
+            c: 1,
         }
     }
 }
@@ -63,19 +63,19 @@ impl Header {
 #[derive(Serialize)]
 struct Pkg {
     header: Header,
-    body: Vec<u8>
+    body: Vec<u8>,
 }
 
 impl Pkg {
     fn new(body: Vec<u8>, dtype: i32) -> Self {
         let header = Header::new(body.len().try_into().unwrap(), dtype);
         Self {
-            header: header,
-            body: body,
+            header,
+            body,
         }
     }
 
-    fn to_bytes(self) -> Vec<u8> {
+    fn into_bytes(self) -> Vec<u8> {
         let mut config = bincode::config();
         config.big_endian();
         let header_bytes = config.serialize(&self.header).unwrap();
@@ -105,14 +105,17 @@ impl Room {
     fn new(roomid: i32) -> Self {
         // Create an insecure (plain TCP) connection to the client. In this case no Box will be used,
         // you will just get a TcpStream, giving you the ability to split the stream into a reader and writer (since SSL streams cannot be cloned).
-        let client = ClientBuilder::new("ws://broadcastlv.chat.bilibili.com:2244/sub").unwrap().connect_insecure().unwrap();
+        let client = ClientBuilder::new("ws://broadcastlv.chat.bilibili.com:2244/sub")
+            .unwrap()
+            .connect_insecure()
+            .unwrap();
         // let client = ClientBuilder::new("wss://broadcastlv.chat.bilibili.com/sub").unwrap().connect_secure().unwrap();
         let (receiver, mut sender) = client.split().unwrap();
         let obj = Obj::new(roomid);
         let obj_bytes = serde_json::to_vec(&obj).unwrap();
 
-        let heart = Pkg::new("[object Object]".as_bytes().to_vec(), 2).to_bytes();
-        let pkg = Pkg::new(obj_bytes, 7).to_bytes();
+        let heart = Pkg::new(b"[object Object]".to_vec(), 2).into_bytes();
+        let pkg = Pkg::new(obj_bytes, 7).into_bytes();
 
         sender.send_message(&Message::binary(pkg)).unwrap();
 
@@ -125,20 +128,23 @@ impl Room {
         });
 
         Self {
-            roomid: roomid,
+            roomid,
             // client: client,
-            receiver: receiver,
-            beat_thread: beat_thread,
+            receiver,
+            beat_thread,
             // pkg: pkg,
             // heart: heart,
         }
     }
 
     fn messages(&mut self) -> impl Iterator<Item = Option<Danmu>> + '_ {
-        self.receiver.incoming_messages().filter_map(|msg| {
-            thread::sleep(time::Duration::from_secs(1));
-            msg.ok()
-        }).flat_map(|msg| Msg::new(msg).into_iter())
+        self.receiver
+            .incoming_messages()
+            .filter_map(|msg| {
+                thread::sleep(time::Duration::from_secs(1));
+                msg.ok()
+            })
+            .flat_map(|msg| Msg::new(msg).into_iter())
     }
 }
 
@@ -148,9 +154,7 @@ struct Msg {
 
 impl Msg {
     fn new(msg: OwnedMessage) -> Self {
-        Self {
-            msg
-        }
+        Self { msg }
     }
 }
 
@@ -184,10 +188,10 @@ impl Iterator for MsgIntoIterator {
                     let of: u64 = self.offset.try_into().unwrap();
                     rdr.set_position(of);
                     let mut end: usize = rdr.read_i32::<BigEndian>().unwrap().try_into().unwrap();
-                    end = self.offset + end;
+                    end += self.offset;
                     rdr.set_position(of + 4);
                     let mut start: usize = rdr.read_i16::<BigEndian>().unwrap().try_into().unwrap();
-                    start = self.offset + start;
+                    start += self.offset;
                     rdr.set_position(of + 8);
                     let dt = rdr.read_i32::<BigEndian>().unwrap();
                     self.offset = end;
@@ -199,16 +203,16 @@ impl Iterator for MsgIntoIterator {
                         // process_message(json);
                         // println!("{}", json);
                         self.index += 1;
-                        return Some(Some(json));
+                        Some(Some(json))
                     } else {
                         self.index += 1;
-                        return Some(None);
+                        Some(None)
                     }
                 } else {
-                    return None;
+                    None
                 }
-            },
-            _ => return None,
+            }
+            _ => None
         }
     }
 }
@@ -222,19 +226,24 @@ fn process_message(json: Danmu) {
             let ts = &info.last().unwrap().get("ts").unwrap();
             let date_time = Local.timestamp(ts.as_i64().unwrap(), 0);
             let user = &info[2][1].as_str().unwrap();
-            println!("[{}] {}: {}", date_time.format("%Y-%m-%d %H:%M:%S").to_string(), user, danmu);
-        },
+            println!(
+                "[{}] {}: {}",
+                date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+                user,
+                danmu
+            );
+        }
         "SEND_GIFT" => {
             let data = json.data.unwrap();
             let action = data.get("action").unwrap().as_str().unwrap();
             let giftname = data.get("giftName").unwrap().as_str().unwrap();
             let user = data.get("uname").unwrap().as_str().unwrap();
             println!("{}: {} {}", user, action, giftname);
-        },
+        }
         "ROOM_RANK" => {
             let data = json.data.unwrap();
             println!("{}", data.get("rank_desc").unwrap().as_str().unwrap());
-        },
+        }
         _ => {
             println!("{}", json.cmd);
         }
@@ -246,21 +255,24 @@ fn main() {
         .version("0.1.0")
         .author("fplust. <fplustlu@gmail.com>")
         .about("bilibili 直播间弹幕机")
-        .arg(Arg::with_name("ID")
-             .required(true)
-             .multiple(false)
-             .help("直播间 id")
-             .index(1))
+        .arg(
+            Arg::with_name("ID")
+                .required(true)
+                .multiple(false)
+                .help("直播间 id")
+                .index(1),
+        )
         .get_matches();
-    let roomid: i32 = matches.value_of("ID").unwrap().parse().expect("房间号需为整数");
+    let roomid: i32 = matches
+        .value_of("ID")
+        .unwrap()
+        .parse()
+        .expect("房间号需为整数");
     // println!("{}", roomid);
 
     let mut room = Room::new(roomid);
 
     for danmu in room.messages() {
-        match danmu {
-            Some(json) => process_message(json),
-            _ => {},
-        }
+        if let Some(json) = danmu { process_message(json) }
     }
 }
