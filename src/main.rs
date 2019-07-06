@@ -6,13 +6,14 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::convert::TryInto;
 use std::io::Cursor;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time;
 use websocket::{
-    receiver::Reader,
-    // client::sync::Client,
+    client::sync::Client,
     // stream::sync::NetworkStream,
     stream::sync::TcpStream,
+    stream::sync::TlsStream,
     ClientBuilder,
     Message,
     OwnedMessage,
@@ -69,10 +70,7 @@ struct Pkg {
 impl Pkg {
     fn new(body: Vec<u8>, dtype: i32) -> Self {
         let header = Header::new(body.len().try_into().unwrap(), dtype);
-        Self {
-            header,
-            body,
-        }
+        Self { header, body }
     }
 
     fn into_bytes(self) -> Vec<u8> {
@@ -91,11 +89,13 @@ struct Danmu {
     info: Option<serde_json::Value>,
 }
 
+type RClient = Arc<Mutex<Client<TlsStream<TcpStream>>>>;
+
 struct Room {
     roomid: i32,
     // client: Client<Box<dyn NetworkStream + Send>>,
-    // client: Client<TcpStream>,
-    receiver: Reader<TcpStream>,
+    client: RClient,
+    // receiver: Reader<TcpStream>,
     beat_thread: thread::JoinHandle<()>,
     // pkg: Vec<u8>,
     // heart: Vec<u8>,
@@ -105,32 +105,42 @@ impl Room {
     fn new(roomid: i32) -> Self {
         // Create an insecure (plain TCP) connection to the client. In this case no Box will be used,
         // you will just get a TcpStream, giving you the ability to split the stream into a reader and writer (since SSL streams cannot be cloned).
-        let client = ClientBuilder::new("ws://broadcastlv.chat.bilibili.com:2244/sub")
-            .unwrap()
-            .connect_insecure()
-            .unwrap();
-        // let client = ClientBuilder::new("wss://broadcastlv.chat.bilibili.com/sub").unwrap().connect_secure().unwrap();
-        let (receiver, mut sender) = client.split().unwrap();
+        // let client = ClientBuilder::new("ws://broadcastlv.chat.bilibili.com:2244/sub")
+        //     .unwrap()
+        //     .connect_insecure()
+        //     .unwrap();
+        let client = Arc::new(Mutex::new(
+            ClientBuilder::new("wss://broadcastlv.chat.bilibili.com/sub")
+                .unwrap()
+                .connect_secure(None)
+                .unwrap(),
+        ));
+        // let (receiver, mut sender) = client.split().unwrap();
         let obj = Obj::new(roomid);
         let obj_bytes = serde_json::to_vec(&obj).unwrap();
 
         let heart = Pkg::new(b"[object Object]".to_vec(), 2).into_bytes();
         let pkg = Pkg::new(obj_bytes, 7).into_bytes();
 
-        sender.send_message(&Message::binary(pkg)).unwrap();
+        let sender = client.clone();
+        sender
+            .lock()
+            .unwrap()
+            .send_message(&Message::binary(pkg))
+            .unwrap();
 
         let beat_thread = thread::spawn(move || {
             let messages = Message::binary(heart);
             loop {
-                sender.send_message(&messages).unwrap();
+                sender.lock().unwrap().send_message(&messages).unwrap();
                 thread::sleep(time::Duration::from_secs(30));
             }
         });
 
         Self {
             roomid,
-            // client: client,
-            receiver,
+            client,
+            // receiver,
             beat_thread,
             // pkg: pkg,
             // heart: heart,
@@ -138,13 +148,46 @@ impl Room {
     }
 
     fn messages(&mut self) -> impl Iterator<Item = Option<Danmu>> + '_ {
-        self.receiver
-            .incoming_messages()
-            .filter_map(|msg| {
-                thread::sleep(time::Duration::from_secs(1));
-                msg.ok()
-            })
+        Reciver::new(self.client.clone())
+            .into_iter()
             .flat_map(|msg| Msg::new(msg).into_iter())
+    }
+}
+
+struct Reciver {
+    client: RClient,
+}
+
+impl Reciver {
+    fn new(client: RClient) -> Self {
+        Self { client }
+    }
+}
+
+impl IntoIterator for Reciver {
+    type Item = OwnedMessage;
+    type IntoIter = RecIntoIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        RecIntoIterator {
+            client: self.client,
+        }
+    }
+}
+
+struct RecIntoIterator {
+    client: RClient,
+}
+
+impl Iterator for RecIntoIterator {
+    type Item = OwnedMessage;
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut msg = None;
+        while msg.is_none() {
+            msg = self.client.lock().unwrap().recv_message().ok();
+            thread::sleep(time::Duration::from_secs(1));
+        }
+        msg
     }
 }
 
@@ -212,7 +255,7 @@ impl Iterator for MsgIntoIterator {
                     None
                 }
             }
-            _ => None
+            _ => None,
         }
     }
 }
@@ -273,6 +316,8 @@ fn main() {
     let mut room = Room::new(roomid);
 
     for danmu in room.messages() {
-        if let Some(json) = danmu { process_message(json) }
+        if let Some(json) = danmu {
+            process_message(json)
+        }
     }
 }
