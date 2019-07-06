@@ -1,5 +1,5 @@
 use std::convert::TryInto;
-use std::thread::sleep;
+use std::thread;
 use std::io::Cursor;
 use std::time;
 use clap::{App, Arg};
@@ -7,8 +7,10 @@ use websocket::{
     ClientBuilder,
     Message,
     OwnedMessage,
-    client::sync::Client,
-    stream::sync::NetworkStream,
+    // client::sync::Client,
+    // stream::sync::NetworkStream,
+    stream::sync::TcpStream,
+    receiver::Reader,
 };
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -91,39 +93,50 @@ struct Danmu {
 
 struct Room {
     roomid: i32,
-    client: Client<Box<dyn NetworkStream + Send>>,
-    pkg: Vec<u8>,
-    heart: Vec<u8>,
+    // client: Client<Box<dyn NetworkStream + Send>>,
+    // client: Client<TcpStream>,
+    receiver: Reader<TcpStream>,
+    beat_thread: thread::JoinHandle<()>,
+    // pkg: Vec<u8>,
+    // heart: Vec<u8>,
 }
 
 impl Room {
     fn new(roomid: i32) -> Self {
-        let client = ClientBuilder::new("wss://broadcastlv.chat.bilibili.com/sub").unwrap().connect(None).unwrap();
+        // Create an insecure (plain TCP) connection to the client. In this case no Box will be used,
+        // you will just get a TcpStream, giving you the ability to split the stream into a reader and writer (since SSL streams cannot be cloned).
+        let client = ClientBuilder::new("ws://broadcastlv.chat.bilibili.com:2244/sub").unwrap().connect_insecure().unwrap();
+        // let client = ClientBuilder::new("wss://broadcastlv.chat.bilibili.com/sub").unwrap().connect_secure().unwrap();
+        let (receiver, mut sender) = client.split().unwrap();
         let obj = Obj::new(roomid);
         let obj_bytes = serde_json::to_vec(&obj).unwrap();
 
         let heart = Pkg::new("[object Object]".as_bytes().to_vec(), 2).to_bytes();
         let pkg = Pkg::new(obj_bytes, 7).to_bytes();
 
+        sender.send_message(&Message::binary(pkg)).unwrap();
+
+        let beat_thread = thread::spawn(move || {
+            let messages = Message::binary(heart);
+            loop {
+                sender.send_message(&messages).unwrap();
+                thread::sleep(time::Duration::from_secs(30));
+            }
+        });
+
         Self {
             roomid: roomid,
-            client: client,
-            pkg: pkg,
-            heart: heart,
+            // client: client,
+            receiver: receiver,
+            beat_thread: beat_thread,
+            // pkg: pkg,
+            // heart: heart,
         }
     }
 
-    fn send_pkg(&mut self) {
-        self.client.send_message(&Message::binary(self.pkg.clone())).unwrap();
-    }
-
-    fn heart_beat(&mut self) {
-        self.client.send_message(&Message::binary(self.heart.clone())).unwrap();
-    }
-
     fn messages(&mut self) -> impl Iterator<Item = Option<Danmu>> + '_ {
-        self.client.incoming_messages().filter_map(|msg| {
-            sleep(time::Duration::from_secs(1));
+        self.receiver.incoming_messages().filter_map(|msg| {
+            thread::sleep(time::Duration::from_secs(1));
             msg.ok()
         }).flat_map(|msg| Msg::new(msg).into_iter())
     }
@@ -243,10 +256,7 @@ fn main() {
     // println!("{}", roomid);
 
     let mut room = Room::new(roomid);
-    // let mut client = ClientBuilder::new("wss://broadcastlv.chat.bilibili.com/sub").unwrap().connect(None).unwrap();
 
-    room.send_pkg();
-    room.heart_beat();
     for danmu in room.messages() {
         match danmu {
             Some(json) => process_message(json),
