@@ -1,13 +1,12 @@
 use bincode;
 use byteorder::{BigEndian, ReadBytesExt};
-use chrono::{Local, TimeZone};
-use clap::{App, Arg};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::convert::TryInto;
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::sync::mpsc;
 use std::time;
 use websocket::{
     client::sync::Client,
@@ -83,26 +82,34 @@ impl Pkg {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Danmu {
-    cmd: String,
-    data: Option<serde_json::Value>,
-    info: Option<serde_json::Value>,
+pub struct Danmu {
+    pub cmd: String,
+    pub data: Option<serde_json::Value>,
+    pub info: Option<serde_json::Value>,
 }
 
 type RClient = Arc<Mutex<Client<TlsStream<TcpStream>>>>;
 
-struct Room {
+pub struct Room {
     roomid: i32,
     // client: Client<Box<dyn NetworkStream + Send>>,
-    client: RClient,
     // receiver: Reader<TcpStream>,
-    beat_thread: thread::JoinHandle<()>,
     // pkg: Vec<u8>,
     // heart: Vec<u8>,
 }
 
 impl Room {
-    fn new(roomid: i32) -> Self {
+    pub fn new(roomid: i32) -> Self {
+        Self {
+            roomid,
+        }
+    }
+
+    pub fn send(&self) {
+        // TODO: 实现发送弹幕功能
+    }
+
+    pub fn messages(&self) -> impl Iterator<Item = Option<Danmu>> + '_ {
         // Create an insecure (plain TCP) connection to the client. In this case no Box will be used,
         // you will just get a TcpStream, giving you the ability to split the stream into a reader and writer (since SSL streams cannot be cloned).
         // let client = ClientBuilder::new("ws://broadcastlv.chat.bilibili.com:2244/sub")
@@ -116,52 +123,18 @@ impl Room {
         c.set_nonblocking(true).unwrap();
         let client = Arc::new(Mutex::new(c));
         // let (receiver, mut sender) = client.split().unwrap();
-        let obj = Obj::new(roomid);
+        let obj = Obj::new(self.roomid);
         let obj_bytes = serde_json::to_vec(&obj).unwrap();
 
-        let heart = Pkg::new(b"[object Object]".to_vec(), 2).into_bytes();
         let pkg = Pkg::new(obj_bytes, 7).into_bytes();
 
-        let sender = client.clone();
-        {
-            sender
-                .lock()
-                .unwrap()
-                .send_message(&Message::binary(pkg))
-                .unwrap();
-        }
+       client 
+            .lock()
+            .unwrap()
+            .send_message(&Message::binary(pkg))
+            .unwrap();
 
-        let beat_thread = thread::spawn(move || {
-            let messages = Message::binary(heart);
-            loop {
-                {
-                    let lock = sender.lock();
-                    if let Ok(mut s) = lock {
-                        if let Ok(_) = s.send_message(&messages) {
-                            // println!("send heart beat!");
-                        } else {
-                            println!("send heart beat error!");
-                        };
-                    } else {
-                        println!("sender get lock error!");
-                    }
-                }
-                thread::sleep(time::Duration::from_secs(30));
-            }
-        });
-
-        Self {
-            roomid,
-            client,
-            // receiver,
-            beat_thread,
-            // pkg: pkg,
-            // heart: heart,
-        }
-    }
-
-    fn messages(&mut self) -> impl Iterator<Item = Option<Danmu>> + '_ {
-        Reciver::new(self.client.clone())
+        Reciver::new(client)
             .into_iter()
             .flat_map(|msg| Msg::new(msg).into_iter())
     }
@@ -169,11 +142,46 @@ impl Room {
 
 struct Reciver {
     client: RClient,
+    beat_thread: thread::JoinHandle<()>,
+    tx: mpsc::Sender<()>,
 }
 
 impl Reciver {
     fn new(client: RClient) -> Self {
-        Self { client }
+        let sender = client.clone();
+        let heart = Pkg::new(b"[object Object]".to_vec(), 2).into_bytes();
+        let (tx, rx) = mpsc::channel();
+        let beat_thread = thread::Builder::new().name("heart_beat".into()).spawn(move || {
+            let messages = Message::binary(heart);
+            loop {
+                if let Ok(_) = rx.try_recv() {
+                    // println!("stop heart beat!");
+                    break;
+                } else {
+                    {
+                        let lock = sender.lock();
+                        if let Ok(mut s) = lock {
+                            if let Ok(_) = s.send_message(&messages) {
+                                // println!("send heart beat!");
+                            } else {
+                                println!("send heart beat error!");
+                            };
+                        } else {
+                            println!("sender get lock error!");
+                        }
+                    }
+                    thread::sleep(time::Duration::from_secs(30));
+                }
+            }
+        }).unwrap();
+
+        Self { client, beat_thread, tx }
+    }
+}
+
+impl Drop for Reciver {
+    fn drop(&mut self) {
+        self.tx.send(()).unwrap();
     }
 }
 
@@ -183,13 +191,13 @@ impl IntoIterator for Reciver {
 
     fn into_iter(self) -> Self::IntoIter {
         RecIntoIterator {
-            client: self.client,
+            receiver: self,
         }
     }
 }
 
 struct RecIntoIterator {
-    client: RClient,
+    receiver: Reciver,
 }
 
 impl Iterator for RecIntoIterator {
@@ -198,7 +206,7 @@ impl Iterator for RecIntoIterator {
         let mut msg = None;
         while msg.is_none() {
             {
-                let lock = self.client.lock();
+                let lock = self.receiver.client.lock();
                 if let Ok(mut s) = lock {
                     let recv = s.recv_message();
                     // println!("{:?}", recv);
@@ -279,68 +287,6 @@ impl Iterator for MsgIntoIterator {
                 }
             }
             _ => None,
-        }
-    }
-}
-
-fn process_message(json: Danmu) {
-    match json.cmd.as_ref() {
-        "DANMU_MSG" => {
-            let info = json.info.unwrap();
-            let info = info.as_array().unwrap();
-            let danmu = &info[1].as_str().unwrap();
-            let ts = &info.last().unwrap().get("ts").unwrap();
-            let date_time = Local.timestamp(ts.as_i64().unwrap(), 0);
-            let user = &info[2][1].as_str().unwrap();
-            println!(
-                "[{}] {}: {}",
-                date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
-                user,
-                danmu
-            );
-        }
-        "SEND_GIFT" => {
-            let data = json.data.unwrap();
-            let action = data.get("action").unwrap().as_str().unwrap();
-            let giftname = data.get("giftName").unwrap().as_str().unwrap();
-            let user = data.get("uname").unwrap().as_str().unwrap();
-            println!("{}: {} {}", user, action, giftname);
-        }
-        "ROOM_RANK" => {
-            let data = json.data.unwrap();
-            println!("{}", data.get("rank_desc").unwrap().as_str().unwrap());
-        }
-        _ => {
-            println!("{}", json.cmd);
-        }
-    }
-}
-
-fn main() {
-    let matches = App::new("bilibili-live-danmu")
-        .version("0.1.0")
-        .author("fplust. <fplustlu@gmail.com>")
-        .about("bilibili 直播间弹幕机")
-        .arg(
-            Arg::with_name("ID")
-                .required(true)
-                .multiple(false)
-                .help("直播间 id")
-                .index(1),
-        )
-        .get_matches();
-    let roomid: i32 = matches
-        .value_of("ID")
-        .unwrap()
-        .parse()
-        .expect("房间号需为整数");
-    // println!("{}", roomid);
-
-    let mut room = Room::new(roomid);
-
-    for danmu in room.messages() {
-        if let Some(json) = danmu {
-            process_message(json)
         }
     }
 }
