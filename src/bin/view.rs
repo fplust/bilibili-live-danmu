@@ -1,5 +1,7 @@
 use chrono::{Local, TimeZone};
 use clap::{App, Arg};
+use std::thread;
+use std::time;
 use bilibili_live_danmu::{
     Room,
     Danmu,
@@ -63,6 +65,7 @@ fn main() {
     for danmu in room.messages() {
         if let Some(json) = danmu {
             process_message(json);
+            thread::sleep(time::Duration::from_millis(50));
         }
     }
 }

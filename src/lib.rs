@@ -228,7 +228,7 @@ impl Iterator for RecIntoIterator {
     type Item = OwnedMessage;
     fn next(&mut self) -> Option<Self::Item> {
         let mut msg = None;
-        while msg.is_none() {
+        loop {
             {
                 let lock = self.receiver.client.lock();
                 if let Ok(mut s) = lock {
@@ -240,9 +240,12 @@ impl Iterator for RecIntoIterator {
                     println!("receiver get lock error!");
                 }
             }
-            thread::sleep(time::Duration::from_secs(1));
+            if msg.is_none() {
+                thread::sleep(time::Duration::from_millis(100));
+            } else {
+                return msg;
+            }
         }
-        msg
     }
 }
 
@@ -264,7 +267,6 @@ impl IntoIterator for Msg {
         MsgIntoIterator {
             msg: self.msg,
             offset: 0,
-            index: 0,
         }
     }
 }
@@ -272,7 +274,6 @@ impl IntoIterator for Msg {
 struct MsgIntoIterator {
     msg: OwnedMessage,
     offset: usize,
-    index: usize,
 }
 
 impl Iterator for MsgIntoIterator {
@@ -300,10 +301,8 @@ impl Iterator for MsgIntoIterator {
                         let json: Danmu = serde_json::from_slice(section).unwrap();
                         // process_message(json);
                         // println!("{}", json);
-                        self.index += 1;
                         Some(Some(json))
                     } else {
-                        self.index += 1;
                         Some(None)
                     }
                 } else {
