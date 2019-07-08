@@ -15,4 +15,6 @@ bincode = "1"
 byteorder = "1"
 chrono = "0.4"
 reqwest = "0.9"
-browsercookie-rs = "0.1"
+# browsercookie-rs = "0.1"
+browsercookie-rs = { path = "../browsercookie-rs" }
+regex = "1"

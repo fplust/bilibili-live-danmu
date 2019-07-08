@@ -17,6 +17,8 @@ use websocket::{
     Message,
     OwnedMessage,
 };
+use reqwest::header;
+use chrono::Local;
 
 #[derive(Serialize)]
 struct Obj {
@@ -105,8 +107,30 @@ impl Room {
         }
     }
 
-    pub fn send(&self) {
-        // TODO: 实现发送弹幕功能
+    pub fn send(&self, msg: &str, cookies: &str, csrf_token: &str) -> Result<(), String> {
+        let mut headers = header::HeaderMap::new();
+        headers.insert(header::COOKIE, header::HeaderValue::from_str(&cookies).unwrap());
+
+        let client = reqwest::Client::builder()
+            .default_headers(headers)
+            .build().unwrap();
+        let now = Local::now().timestamp();
+        let params = [
+            ("color", "16777215"),
+            ("fontsize", "25"),
+            ("mode", "1"),
+            ("msg", msg),
+            ("rnd", &format!("{}", now)),
+            ("roomid", &format!("{}", self.roomid)),
+            ("bubble", "0"),
+            ("csrf_token", csrf_token),
+            ("csrf", csrf_token),
+        ];
+        let res: serde_json::Value = client.post("https://api.live.bilibili.com/msg/send")
+            .form(&params)
+            .send().unwrap().json().unwrap();
+        println!("{}", res);
+        Ok(())
     }
 
     pub fn messages(&self) -> impl Iterator<Item = Option<Danmu>> + '_ {
