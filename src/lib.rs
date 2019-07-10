@@ -83,8 +83,88 @@ impl Pkg {
     }
 }
 
+#[derive(Debug)]
+pub struct Danmaku {
+    pub uid: i64,
+    pub username: String,
+    pub messages: String,
+    pub guard: i64,
+    pub is_admin: bool,
+    pub timestamp: i64,
+}
+
+#[derive(Debug)]
+pub struct Gift {
+    pub uid: i64,
+    pub username: String,
+    pub action: String,
+    pub gift: String,
+    pub amount: i64,
+    pub value: i64,
+    pub guard_type: i64,
+}
+
+#[derive(Debug)]
+pub enum BMessage {
+    DANMAKU(Danmaku),
+    GIFT(Gift),
+    BMSG(BMsg),
+}
+
+impl From<BMsg> for BMessage {
+    fn from(msg: BMsg) -> Self {
+        match msg.cmd.as_ref() {
+            "DANMU_MSG" => {
+                let info = msg.info.unwrap();
+                BMessage::DANMAKU(Danmaku {
+                    uid: info[2][0].as_i64().unwrap(),
+                    username: info[2][1].as_str().unwrap().to_string(),
+                    messages: info[1].as_str().unwrap().to_string(),
+                    guard: info[7].as_i64().unwrap(),
+                    is_admin: info[2][2].as_i64().unwrap() == 1,
+                    timestamp: info.as_array().unwrap().last().unwrap()
+                        .get("ts").unwrap().as_i64().unwrap(),
+                })
+            }
+            "SEND_GIFT" => {
+                let data = msg.data.unwrap();
+                let mut value = data.get("total_coin").unwrap().as_i64().unwrap();
+                let coin_type = data.get("coin_type").unwrap();
+                if coin_type != "gold" {
+                    value *= 0;
+                }
+                BMessage::GIFT(Gift {
+                    uid: data.get("uid").unwrap().as_i64().unwrap(),
+                    username: data.get("uname").unwrap().as_str().unwrap().to_string(),
+                    action: data.get("action").unwrap().as_str().unwrap().to_string(),
+                    gift: data.get("giftName").unwrap().as_str().unwrap().to_string(),
+                    amount: data.get("num").unwrap().as_i64().unwrap(),
+                    value: value / 1000,
+                    guard_type: 0,
+                })
+            }
+            "GUARD_BUY" => {
+                let data = msg.data.unwrap();
+                let value = data.get("price").unwrap().as_i64().unwrap();
+                BMessage::GIFT(Gift {
+                    uid: data.get("uid").unwrap().as_i64().unwrap(),
+                    username: data.get("username").unwrap().as_str().unwrap().to_string(),
+                    action: "购买".into(),
+                    gift: data.get("gift_name").unwrap().as_str().unwrap().to_string(),
+                    amount: data.get("num").unwrap().as_i64().unwrap(),
+                    value: value / 1000,
+                    guard_type: data.get("guard_level").unwrap().as_i64().unwrap(),
+                })
+            }
+            _ => {
+                BMessage::BMSG(msg)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Danmu {
+pub struct BMsg {
     pub cmd: String,
     pub data: Option<serde_json::Value>,
     pub info: Option<serde_json::Value>,
@@ -107,7 +187,7 @@ impl Room {
         }
     }
 
-    pub fn send(&self, msg: &str, cookies: &str, csrf_token: &str) -> Result<(), String> {
+    pub fn send(&self, msg: &str, cookies: &str, csrf_token: &str) -> Result<serde_json::Value, String> {
         let mut headers = header::HeaderMap::new();
         headers.insert(header::COOKIE, header::HeaderValue::from_str(&cookies).unwrap());
 
@@ -129,11 +209,11 @@ impl Room {
         let res: serde_json::Value = client.post("https://api.live.bilibili.com/msg/send")
             .form(&params)
             .send().unwrap().json().unwrap();
-        println!("{}", res);
-        Ok(())
+        // println!("{}", res);
+        Ok(res)
     }
 
-    pub fn messages(&self) -> impl Iterator<Item = Option<Danmu>> + '_ {
+    pub fn messages(&self) -> impl Iterator<Item = Option<BMessage>> + '_ {
         // Create an insecure (plain TCP) connection to the client. In this case no Box will be used,
         // you will just get a TcpStream, giving you the ability to split the stream into a reader and writer (since SSL streams cannot be cloned).
         // let client = ClientBuilder::new("ws://broadcastlv.chat.bilibili.com:2244/sub")
@@ -260,7 +340,7 @@ impl Msg {
 }
 
 impl IntoIterator for Msg {
-    type Item = Option<Danmu>;
+    type Item = Option<BMessage>;
     type IntoIter = MsgIntoIterator;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -277,7 +357,7 @@ struct MsgIntoIterator {
 }
 
 impl Iterator for MsgIntoIterator {
-    type Item = Option<Danmu>;
+    type Item = Option<BMessage>;
     fn next(&mut self) -> Option<Self::Item> {
         match &self.msg {
             OwnedMessage::Binary(data) => {
@@ -298,10 +378,10 @@ impl Iterator for MsgIntoIterator {
                     if dt == 5 {
                         let data = rdr.get_ref();
                         let section = &data[start..end];
-                        let json: Danmu = serde_json::from_slice(section).unwrap();
+                        let json: BMsg = serde_json::from_slice(section).unwrap();
                         // process_message(json);
                         // println!("{}", json);
-                        Some(Some(json))
+                        Some(Some(json.into()))
                     } else {
                         Some(None)
                     }
