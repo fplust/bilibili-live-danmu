@@ -28,6 +28,9 @@ fn user_color(dan: &Danmaku) -> Colour {
 fn process_message(msg: BMessage) {
     match msg {
         BMessage::DANMAKU(danmu) => {
+            if danmu.is_gift {
+                return;
+            }
             let date_time = Local.timestamp(danmu.timestamp, 0);
             println!(
                 "[{}] {}: {}",
@@ -35,6 +38,7 @@ fn process_message(msg: BMessage) {
                 user_color(&danmu).bold().paint(danmu.username),
                 Colour::White.paint(danmu.messages)
             );
+            thread::sleep(time::Duration::from_millis(50));
         }
         BMessage::GIFT(gift) => {
             println!(
@@ -63,7 +67,7 @@ fn process_message(msg: BMessage) {
 
 fn main() {
     let matches = App::new("bilibili-live-danmu")
-        .version("0.1.0")
+        .version("0.2.0")
         .author("fplust. <fplustlu@gmail.com>")
         .about("bilibili 直播间弹幕机")
         .subcommand(
@@ -141,10 +145,11 @@ fn main() {
 
         let room = Room::new(roomid);
 
-        for danmu in room.messages() {
-            if let Some(json) = danmu {
-                process_message(json);
-                thread::sleep(time::Duration::from_millis(50));
+        loop {
+            for danmu in room.messages() {
+                if let Some(json) = danmu {
+                    process_message(json);
+                }
             }
         }
     }

@@ -13,6 +13,7 @@ use websocket::{
     // stream::sync::NetworkStream,
     stream::sync::TcpStream,
     stream::sync::TlsStream,
+    result::WebSocketError,
     ClientBuilder,
     Message,
     OwnedMessage,
@@ -91,6 +92,8 @@ pub struct Danmaku {
     pub guard: i64,
     pub is_admin: bool,
     pub timestamp: i64,
+    pub user_level: i64,
+    pub is_gift: bool,
 }
 
 #[derive(Debug)]
@@ -124,6 +127,8 @@ impl From<BMsg> for BMessage {
                     is_admin: info[2][2].as_i64().unwrap() == 1,
                     timestamp: info.as_array().unwrap().last().unwrap()
                         .get("ts").unwrap().as_i64().unwrap(),
+                    user_level: info[4][0].as_i64().unwrap(),
+                    is_gift: info[0][9].as_i64().unwrap() > 0,
                 })
             }
             "SEND_GIFT" => {
@@ -274,7 +279,7 @@ impl Reciver {
                             println!("sender get lock error!");
                         }
                     }
-                    thread::sleep(time::Duration::from_secs(30));
+                    thread::sleep(time::Duration::from_secs(10));
                 }
             }
         }).unwrap();
@@ -314,14 +319,26 @@ impl Iterator for RecIntoIterator {
                 if let Ok(mut s) = lock {
                     let recv = s.recv_message();
                     // println!("{:?}", recv);
-                    msg = recv.ok();
+                    match recv {
+                        Err(WebSocketError::ProtocolError(s)) => {
+                            println!("{}", s);
+                            return None
+                        }
+                        Err(WebSocketError::DataFrameError(s)) => {
+                            println!("{}", s);
+                            return None
+                        }
+                        _ => {
+                            msg = recv.ok();
+                        }
+                    }
                 // println!("get messages ok!");
                 } else {
                     println!("receiver get lock error!");
                 }
             }
             if msg.is_none() {
-                thread::sleep(time::Duration::from_millis(100));
+                thread::sleep(time::Duration::from_millis(200));
             } else {
                 return msg;
             }
