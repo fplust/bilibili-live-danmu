@@ -1,18 +1,13 @@
-use clap::{App, Arg, SubCommand};
-use bilibili_live_danmu::{
-    Room,
-    BMessage,
-    Danmaku,
-};
+use ansi_term::Colour;
+use bilibili_live_danmu::{BMessage, Danmaku, Room};
 use browsercookie::{Browser, Browsercookies};
-use regex::Regex;
-use rustyline::Editor;
-use rustyline::error::ReadlineError;
 use chrono::{Local, TimeZone};
+use clap::{App, Arg, SubCommand};
+use regex::Regex;
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
 use std::thread;
 use std::time;
-use ansi_term::Colour;
-
 
 fn user_color(dan: &Danmaku) -> Colour {
     if dan.is_admin {
@@ -23,7 +18,6 @@ fn user_color(dan: &Danmaku) -> Colour {
         Colour::Green
     }
 }
-
 
 fn process_message(msg: BMessage) {
     match msg {
@@ -43,19 +37,22 @@ fn process_message(msg: BMessage) {
         BMessage::GIFT(gift) => {
             println!(
                 "{}: {}{}{}",
-                 Colour::Red.bold().paint(gift.username),
-                 gift.action,
-                 gift.amount,
-                 gift.gift
-             );
+                Colour::Red.bold().paint(gift.username),
+                gift.action,
+                gift.amount,
+                gift.gift
+            );
         }
         BMessage::BMSG(bmsg) => {
             match bmsg.cmd.as_ref() {
                 "ROOM_RANK" => {
                     let data = bmsg.data.unwrap();
-                    println!("{}", Colour::Yellow.bold().paint(
-                            data.get("rank_desc").unwrap().as_str().unwrap()
-                            ));
+                    println!(
+                        "{}",
+                        Colour::Yellow
+                            .bold()
+                            .paint(data.get("rank_desc").unwrap().as_str().unwrap())
+                    );
                 }
                 _ => {
                     // println!("{}", bmsg.cmd);
@@ -67,30 +64,26 @@ fn process_message(msg: BMessage) {
 
 fn main() {
     let matches = App::new("bilibili-live-danmu")
-        .version("0.2.0")
+        .version("0.3.0")
         .author("fplust. <fplustlu@gmail.com>")
         .about("bilibili 直播间弹幕机")
         .subcommand(
-            SubCommand::with_name("send")
-                .about("发送弹幕")
-                .arg(
-                    Arg::with_name("ID")
-                        .required(true)
-                        .multiple(false)
-                        .help("直播间 id")
-                        .index(1),
-                )
+            SubCommand::with_name("send").about("发送弹幕").arg(
+                Arg::with_name("ID")
+                    .required(true)
+                    .multiple(false)
+                    .help("直播间 id")
+                    .index(1),
+            ),
         )
         .subcommand(
-            SubCommand::with_name("view")
-                .about("查看弹幕")
-                .arg(
-                    Arg::with_name("ID")
-                        .required(true)
-                        .multiple(false)
-                        .help("直播间 id")
-                        .index(1),
-                )
+            SubCommand::with_name("view").about("查看弹幕").arg(
+                Arg::with_name("ID")
+                    .required(true)
+                    .multiple(false)
+                    .help("直播间 id")
+                    .index(1),
+            ),
         )
         .get_matches();
     if let Some(matches) = matches.subcommand_matches("send") {
@@ -102,9 +95,14 @@ fn main() {
         // println!("{}", roomid);
         let mut bc = Browsercookies::new();
         let domain_regex = Regex::new("bilibili").unwrap();
-        bc.from_browser(Browser::Firefox, &domain_regex).expect("Failed to get firefox browser cookies");
+        bc.from_browser(Browser::Firefox, &domain_regex)
+            .expect("Failed to get firefox browser cookies");
         // println!("{:?}", &bc.cj);
-        let csrf = bc.cj.get("bili_jct").expect("请使用firefox登录后重试").value();
+        let csrf = bc
+            .cj
+            .get("bili_jct")
+            .expect("请使用firefox登录后重试")
+            .value();
         // println!("{:?}", csrf);
 
         let cookie_header = bc.to_header(&domain_regex).unwrap();
@@ -154,4 +152,3 @@ fn main() {
         }
     }
 }
-

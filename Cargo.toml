@@ -1,6 +1,6 @@
 [package]
 name = "bilibili-live-danmu"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["fplust <fplustlu@gmail.com>"]
 edition = "2018"
 
@@ -20,3 +20,4 @@ browsercookie-rs = { path = "../browsercookie-rs" }
 regex = "1"
 ansi_term = "0.11"
 rustyline = "5"
+cursive = "0.12"

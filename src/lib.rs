@@ -1,25 +1,25 @@
 use bincode;
 use byteorder::{BigEndian, ReadBytesExt};
+use chrono::Local;
+use reqwest::header;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::convert::TryInto;
 use std::io::Cursor;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::sync::mpsc;
 use std::time;
 use websocket::{
     client::sync::Client,
+    result::WebSocketError,
     // stream::sync::NetworkStream,
     stream::sync::TcpStream,
     stream::sync::TlsStream,
-    result::WebSocketError,
     ClientBuilder,
     Message,
     OwnedMessage,
 };
-use reqwest::header;
-use chrono::Local;
 
 #[derive(Serialize)]
 struct Obj {
@@ -125,8 +125,15 @@ impl From<BMsg> for BMessage {
                     messages: info[1].as_str().unwrap().to_string(),
                     guard: info[7].as_i64().unwrap(),
                     is_admin: info[2][2].as_i64().unwrap() == 1,
-                    timestamp: info.as_array().unwrap().last().unwrap()
-                        .get("ts").unwrap().as_i64().unwrap(),
+                    timestamp: info
+                        .as_array()
+                        .unwrap()
+                        .last()
+                        .unwrap()
+                        .get("ts")
+                        .unwrap()
+                        .as_i64()
+                        .unwrap(),
                     user_level: info[4][0].as_i64().unwrap(),
                     is_gift: info[0][9].as_i64().unwrap() > 0,
                 })
@@ -161,9 +168,7 @@ impl From<BMsg> for BMessage {
                     guard_type: data.get("guard_level").unwrap().as_i64().unwrap(),
                 })
             }
-            _ => {
-                BMessage::BMSG(msg)
-            }
+            _ => BMessage::BMSG(msg),
         }
     }
 }
@@ -177,6 +182,7 @@ pub struct BMsg {
 
 type RClient = Arc<Mutex<Client<TlsStream<TcpStream>>>>;
 
+#[derive(Clone, Copy)]
 pub struct Room {
     roomid: i32,
     // client: Client<Box<dyn NetworkStream + Send>>,
@@ -187,18 +193,25 @@ pub struct Room {
 
 impl Room {
     pub fn new(roomid: i32) -> Self {
-        Self {
-            roomid,
-        }
+        Self { roomid }
     }
 
-    pub fn send(&self, msg: &str, cookies: &str, csrf_token: &str) -> Result<serde_json::Value, String> {
+    pub fn send(
+        &self,
+        msg: &str,
+        cookies: &str,
+        csrf_token: &str,
+    ) -> Result<serde_json::Value, String> {
         let mut headers = header::HeaderMap::new();
-        headers.insert(header::COOKIE, header::HeaderValue::from_str(&cookies).unwrap());
+        headers.insert(
+            header::COOKIE,
+            header::HeaderValue::from_str(&cookies).unwrap(),
+        );
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
-            .build().unwrap();
+            .build()
+            .unwrap();
         let now = Local::now().timestamp();
         let params = [
             ("color", "16777215"),
@@ -211,9 +224,13 @@ impl Room {
             ("csrf_token", csrf_token),
             ("csrf", csrf_token),
         ];
-        let res: serde_json::Value = client.post("https://api.live.bilibili.com/msg/send")
+        let res: serde_json::Value = client
+            .post("https://api.live.bilibili.com/msg/send")
             .form(&params)
-            .send().unwrap().json().unwrap();
+            .send()
+            .unwrap()
+            .json()
+            .unwrap();
         // println!("{}", res);
         Ok(res)
     }
@@ -237,7 +254,7 @@ impl Room {
 
         let pkg = Pkg::new(obj_bytes, 7).into_bytes();
 
-       client 
+        client
             .lock()
             .unwrap()
             .send_message(&Message::binary(pkg))
@@ -260,31 +277,38 @@ impl Reciver {
         let sender = client.clone();
         let heart = Pkg::new(b"[object Object]".to_vec(), 2).into_bytes();
         let (tx, rx) = mpsc::channel();
-        let beat_thread = thread::Builder::new().name("heart_beat".into()).spawn(move || {
-            let messages = Message::binary(heart);
-            loop {
-                if let Ok(_) = rx.try_recv() {
-                    // println!("stop heart beat!");
-                    break;
-                } else {
-                    {
-                        let lock = sender.lock();
-                        if let Ok(mut s) = lock {
-                            if let Ok(_) = s.send_message(&messages) {
-                                // println!("send heart beat!");
+        let beat_thread = thread::Builder::new()
+            .name("heart_beat".into())
+            .spawn(move || {
+                let messages = Message::binary(heart);
+                loop {
+                    if let Ok(_) = rx.try_recv() {
+                        // println!("stop heart beat!");
+                        break;
+                    } else {
+                        {
+                            let lock = sender.lock();
+                            if let Ok(mut s) = lock {
+                                if let Ok(_) = s.send_message(&messages) {
+                                    // println!("send heart beat!");
+                                } else {
+                                    println!("send heart beat error!");
+                                };
                             } else {
-                                println!("send heart beat error!");
-                            };
-                        } else {
-                            println!("sender get lock error!");
+                                println!("sender get lock error!");
+                            }
                         }
+                        thread::sleep(time::Duration::from_secs(10));
                     }
-                    thread::sleep(time::Duration::from_secs(10));
                 }
-            }
-        }).unwrap();
+            })
+            .unwrap();
 
-        Self { client, beat_thread, tx }
+        Self {
+            client,
+            beat_thread,
+            tx,
+        }
     }
 }
 
@@ -299,9 +323,7 @@ impl IntoIterator for Reciver {
     type IntoIter = RecIntoIterator;
 
     fn into_iter(self) -> Self::IntoIter {
-        RecIntoIterator {
-            receiver: self,
-        }
+        RecIntoIterator { receiver: self }
     }
 }
 
@@ -322,11 +344,11 @@ impl Iterator for RecIntoIterator {
                     match recv {
                         Err(WebSocketError::ProtocolError(s)) => {
                             println!("{}", s);
-                            return None
+                            return None;
                         }
                         Err(WebSocketError::DataFrameError(s)) => {
                             println!("{}", s);
-                            return None
+                            return None;
                         }
                         _ => {
                             msg = recv.ok();
