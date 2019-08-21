@@ -110,8 +110,9 @@ fn send_danmu(rx: mpsc::Receiver<String>, room: Room) -> Result<(), std::io::Err
 }
 
 fn main() {
+    let version = env!("CARGO_PKG_VERSION");
     let matches = App::new("bilibili-live-danmu")
-        .version("0.3.0")
+        .version(version)
         .author("fplust. <fplustlu@gmail.com>")
         .about("bilibili 直播间弹幕机")
         .arg(
