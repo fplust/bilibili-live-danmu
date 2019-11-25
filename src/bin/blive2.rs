@@ -50,6 +50,14 @@ fn process_message(msg: BMessage) -> Option<String> {
                 gift.gift
             ))
         }
+        BMessage::SuperChat(superchat) => {
+            Some(format!(
+                "{}: {}元 {}",
+                superchat.username,
+                superchat.price,
+                superchat.message,
+            ))
+        }
         BMessage::BMSG(bmsg) => {
             match bmsg.cmd.as_ref() {
                 "ROOM_RANK" => {

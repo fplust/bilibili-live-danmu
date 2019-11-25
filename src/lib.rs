@@ -108,21 +108,36 @@ pub struct Gift {
 }
 
 #[derive(Debug)]
+pub struct SuperChat {
+    pub uid: i64,
+    pub username: String,
+    pub message: String,
+    pub message_jpn: String,
+    pub price: i64,
+}
+
+#[derive(Debug)]
 pub enum BMessage {
     DANMAKU(Danmaku),
     GIFT(Gift),
+    SuperChat(SuperChat),
     BMSG(BMsg),
+}
+
+#[inline]
+fn v2string(value: &serde_json::Value) -> String {
+    value.as_str().unwrap().to_string()
 }
 
 impl From<BMsg> for BMessage {
     fn from(msg: BMsg) -> Self {
-        match msg.cmd.as_ref() {
+        match msg.cmd.as_str() {
             "DANMU_MSG" => {
                 let info = msg.info.unwrap();
                 BMessage::DANMAKU(Danmaku {
                     uid: info[2][0].as_i64().unwrap(),
-                    username: info[2][1].as_str().unwrap().to_string(),
-                    messages: info[1].as_str().unwrap().to_string(),
+                    username: v2string(&info[2][1]),
+                    messages: v2string(&info[1]),
                     guard: info[7].as_i64().unwrap(),
                     is_admin: info[2][2].as_i64().unwrap() == 1,
                     timestamp: info
@@ -147,9 +162,9 @@ impl From<BMsg> for BMessage {
                 }
                 BMessage::GIFT(Gift {
                     uid: data.get("uid").unwrap().as_i64().unwrap(),
-                    username: data.get("uname").unwrap().as_str().unwrap().to_string(),
-                    action: data.get("action").unwrap().as_str().unwrap().to_string(),
-                    gift: data.get("giftName").unwrap().as_str().unwrap().to_string(),
+                    username: v2string(&data.get("uname").unwrap()),
+                    action: v2string(&data.get("action").unwrap()),
+                    gift: v2string(&data.get("giftName").unwrap()),
                     amount: data.get("num").unwrap().as_i64().unwrap(),
                     value: value / 1000,
                     guard_type: 0,
@@ -160,12 +175,23 @@ impl From<BMsg> for BMessage {
                 let value = data.get("price").unwrap().as_i64().unwrap();
                 BMessage::GIFT(Gift {
                     uid: data.get("uid").unwrap().as_i64().unwrap(),
-                    username: data.get("username").unwrap().as_str().unwrap().to_string(),
+                    username: v2string(&data.get("username").unwrap()),
                     action: "购买".into(),
-                    gift: data.get("gift_name").unwrap().as_str().unwrap().to_string(),
+                    gift: v2string(&data.get("gift_name").unwrap()),
                     amount: data.get("num").unwrap().as_i64().unwrap(),
                     value: value / 1000,
                     guard_type: data.get("guard_level").unwrap().as_i64().unwrap(),
+                })
+            }
+            // "SUPER_CHAT_MESSAGE" | "SUPER_CHAT_MESSAGE_JPN" => {
+            "SUPER_CHAT_MESSAGE" => {
+                let data = msg.data.unwrap();
+                BMessage::SuperChat(SuperChat {
+                    uid: data.get("uid").unwrap().as_i64().unwrap(),
+                    username: v2string(&data.get("user_info").unwrap().get("uname").unwrap()),
+                    message: v2string(&data.get("message").unwrap()),
+                    message_jpn: v2string(&data.get("message_jpn").unwrap()),
+                    price: data.get("price").unwrap().as_i64().unwrap(),
                 })
             }
             _ => BMessage::BMSG(msg),
@@ -283,7 +309,7 @@ impl Reciver {
                 let messages = Message::binary(heart);
                 loop {
                     if let Ok(_) = rx.try_recv() {
-                        // println!("stop heart beat!");
+                        println!("stop heart beat!");
                         break;
                     } else {
                         {

@@ -35,16 +35,27 @@ fn process_message(msg: BMessage) {
             thread::sleep(time::Duration::from_millis(50));
         }
         BMessage::GIFT(gift) => {
+            match gift.gift.as_str() {
+                "辣条" => {},
+                _ => println!(
+                    "{}: {}{}{}",
+                    Colour::Red.bold().paint(gift.username),
+                    gift.action,
+                    gift.amount,
+                    gift.gift
+                ),
+            }
+        }
+        BMessage::SuperChat(superchat) => {
             println!(
-                "{}: {}{}{}",
-                Colour::Red.bold().paint(gift.username),
-                gift.action,
-                gift.amount,
-                gift.gift
+                "{}: {}元 {}",
+                Colour::Red.bold().paint(superchat.username),
+                superchat.price,
+                superchat.message,
             );
         }
         BMessage::BMSG(bmsg) => {
-            match bmsg.cmd.as_ref() {
+            match bmsg.cmd.as_str() {
                 "ROOM_RANK" => {
                     let data = bmsg.data.unwrap();
                     println!(
@@ -52,6 +63,15 @@ fn process_message(msg: BMessage) {
                         Colour::Yellow
                             .bold()
                             .paint(data.get("rank_desc").unwrap().as_str().unwrap())
+                    );
+                }
+                "SUPER_CHAT_MESSAGE" => {
+                    let data = bmsg.data.unwrap();
+                    println!(
+                        "SuperChat: {}",
+                        Colour::Yellow
+                            .bold()
+                            .paint(format!("{:?}", data))
                     );
                 }
                 _ => {
