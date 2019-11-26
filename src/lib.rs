@@ -6,19 +6,23 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::convert::TryInto;
 use std::io::Cursor;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time;
-use websocket::{
-    client::sync::Client,
-    result::WebSocketError,
-    // stream::sync::NetworkStream,
-    stream::sync::TcpStream,
-    stream::sync::TlsStream,
-    ClientBuilder,
-    Message,
-    OwnedMessage,
+use url;
+use async_std::prelude::*;
+use async_std::{
+    task,
+    stream,
+};
+use async_tungstenite::{
+    connect_async,
+};
+use futures::{
+    SinkExt,
+    StreamExt,
+};
+use async_tungstenite::tungstenite::{
+    protocol::Message,
+    // error::Error,
 };
 
 #[derive(Serialize)]
@@ -140,11 +144,7 @@ impl From<BMsg> for BMessage {
                     messages: v2string(&info[1]),
                     guard: info[7].as_i64().unwrap(),
                     is_admin: info[2][2].as_i64().unwrap() == 1,
-                    timestamp: info
-                        .as_array()
-                        .unwrap()
-                        .last()
-                        .unwrap()
+                    timestamp: info[9]
                         .get("ts")
                         .unwrap()
                         .as_i64()
@@ -206,7 +206,6 @@ pub struct BMsg {
     pub info: Option<serde_json::Value>,
 }
 
-type RClient = Arc<Mutex<Client<TlsStream<TcpStream>>>>;
 
 #[derive(Clone, Copy)]
 pub struct Room {
@@ -261,200 +260,71 @@ impl Room {
         Ok(res)
     }
 
-    pub fn messages(&self) -> impl Iterator<Item = Option<BMessage>> + '_ {
+    pub async fn messages(&self) -> impl stream::Stream<Item=BMessage> {
         // Create an insecure (plain TCP) connection to the client. In this case no Box will be used,
         // you will just get a TcpStream, giving you the ability to split the stream into a reader and writer (since SSL streams cannot be cloned).
         // let client = ClientBuilder::new("ws://broadcastlv.chat.bilibili.com:2244/sub")
         //     .unwrap()
         //     .connect_insecure()
         //     .unwrap();
-        let c = ClientBuilder::new("wss://broadcastlv.chat.bilibili.com/sub")
-            .unwrap()
-            .connect_secure(None)
-            .unwrap();
-        c.set_nonblocking(true).unwrap();
-        let client = Arc::new(Mutex::new(c));
-        // let (receiver, mut sender) = client.split().unwrap();
+        // let url = url::Url::parse("wss://broadcastlv.chat.bilibili.com/sub").unwrap();
+        let url = url::Url::parse("ws://broadcastlv.chat.bilibili.com:2244/sub").unwrap();
+        let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+        let (mut sender, receiver) = ws_stream.split();
         let obj = Obj::new(self.roomid);
         let obj_bytes = serde_json::to_vec(&obj).unwrap();
 
         let pkg = Pkg::new(obj_bytes, 7).into_bytes();
 
-        client
-            .lock()
-            .unwrap()
-            .send_message(&Message::binary(pkg))
-            .unwrap();
+        sender.send(Message::binary(pkg)).await.expect("Failed to send message");
 
-        Reciver::new(client)
-            .into_iter()
-            .flat_map(|msg| Msg::new(msg).into_iter())
-    }
-}
-
-struct Reciver {
-    client: RClient,
-    beat_thread: thread::JoinHandle<()>,
-    tx: mpsc::Sender<()>,
-}
-
-impl Reciver {
-    fn new(client: RClient) -> Self {
-        let sender = client.clone();
-        let heart = Pkg::new(b"[object Object]".to_vec(), 2).into_bytes();
-        let (tx, rx) = mpsc::channel();
-        let beat_thread = thread::Builder::new()
-            .name("heart_beat".into())
-            .spawn(move || {
+        let heart_beat = task::spawn(async move {
+            loop {
+                let heart = Pkg::new(b"[object Object]".to_vec(), 2).into_bytes();
                 let messages = Message::binary(heart);
-                loop {
-                    if let Ok(_) = rx.try_recv() {
-                        println!("stop heart beat!");
-                        break;
-                    } else {
-                        {
-                            let lock = sender.lock();
-                            if let Ok(mut s) = lock {
-                                if let Ok(_) = s.send_message(&messages) {
-                                    // println!("send heart beat!");
-                                } else {
-                                    println!("send heart beat error!");
-                                };
-                            } else {
-                                println!("sender get lock error!");
-                            }
-                        }
-                        thread::sleep(time::Duration::from_secs(10));
-                    }
-                }
-            })
-            .unwrap();
-
-        Self {
-            client,
-            beat_thread,
-            tx,
-        }
-    }
-}
-
-impl Drop for Reciver {
-    fn drop(&mut self) {
-        self.tx.send(()).unwrap();
-    }
-}
-
-impl IntoIterator for Reciver {
-    type Item = OwnedMessage;
-    type IntoIter = RecIntoIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        RecIntoIterator { receiver: self }
-    }
-}
-
-struct RecIntoIterator {
-    receiver: Reciver,
-}
-
-impl Iterator for RecIntoIterator {
-    type Item = OwnedMessage;
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut msg = None;
-        loop {
-            {
-                let lock = self.receiver.client.lock();
-                if let Ok(mut s) = lock {
-                    let recv = s.recv_message();
-                    // println!("{:?}", recv);
-                    match recv {
-                        Err(WebSocketError::ProtocolError(s)) => {
-                            println!("{}", s);
-                            return None;
-                        }
-                        Err(WebSocketError::DataFrameError(s)) => {
-                            println!("{}", s);
-                            return None;
-                        }
-                        _ => {
-                            msg = recv.ok();
-                        }
-                    }
-                // println!("get messages ok!");
+                if let Ok(_) = sender.send(messages).await {
+                    println!("send heart beat!");
                 } else {
-                    println!("receiver get lock error!");
-                }
+                    println!("send heart beat error!");
+                };
+                task::sleep(time::Duration::from_secs(10)).await;
             }
-            if msg.is_none() {
-                thread::sleep(time::Duration::from_millis(200));
-            } else {
-                return msg;
-            }
-        }
-    }
-}
+        });
+        heart_beat.await;
 
-struct Msg {
-    msg: OwnedMessage,
-}
-
-impl Msg {
-    fn new(msg: OwnedMessage) -> Self {
-        Self { msg }
-    }
-}
-
-impl IntoIterator for Msg {
-    type Item = Option<BMessage>;
-    type IntoIter = MsgIntoIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        MsgIntoIterator {
-            msg: self.msg,
-            offset: 0,
-        }
-    }
-}
-
-struct MsgIntoIterator {
-    msg: OwnedMessage,
-    offset: usize,
-}
-
-impl Iterator for MsgIntoIterator {
-    type Item = Option<BMessage>;
-    fn next(&mut self) -> Option<Self::Item> {
-        match &self.msg {
-            OwnedMessage::Binary(data) => {
-                let len = data.len();
-                let mut rdr = Cursor::new(data);
-                if self.offset < len {
-                    let of: u64 = self.offset.try_into().unwrap();
-                    rdr.set_position(of);
-                    let mut end: usize = rdr.read_i32::<BigEndian>().unwrap().try_into().unwrap();
-                    end += self.offset;
-                    rdr.set_position(of + 4);
-                    let mut start: usize = rdr.read_i16::<BigEndian>().unwrap().try_into().unwrap();
-                    start += self.offset;
-                    rdr.set_position(of + 8);
-                    let dt = rdr.read_i32::<BigEndian>().unwrap();
-                    self.offset = end;
-                    // println!("{} {} {} {} {}", len, of, start, end, dt);
-                    if dt == 5 {
-                        let data = rdr.get_ref();
-                        let section = &data[start..end];
-                        let json: BMsg = serde_json::from_slice(section).unwrap();
-                        // process_message(json);
-                        // println!("{}", json);
-                        Some(Some(json.into()))
-                    } else {
-                        Some(None)
+        let msgs = receiver.map(|msg| {
+            let mut msgs: Vec<BMessage> = Vec::new();
+            match msg.unwrap() {
+                Message::Binary(data) => {
+                    let len = data.len();
+                    let mut rdr = Cursor::new(data);
+                    let mut offset = 0;
+                    while offset < len {
+                        let of: u64 = offset.try_into().unwrap();
+                        rdr.set_position(of);
+                        let mut end: usize = rdr.read_i32::<BigEndian>().unwrap().try_into().unwrap();
+                        end += offset;
+                        rdr.set_position(of + 4);
+                        let mut start: usize = rdr.read_i16::<BigEndian>().unwrap().try_into().unwrap();
+                        start += offset;
+                        rdr.set_position(of + 8);
+                        let dt = rdr.read_i32::<BigEndian>().unwrap();
+                        offset = end;
+                        // println!("{} {} {} {} {}", len, of, start, end, dt);
+                        if dt == 5 {
+                            let data = rdr.get_ref();
+                            let section = &data[start..end];
+                            let json: BMsg = serde_json::from_slice(section).unwrap();
+                            // process_message(json);
+                            // println!("{:?}", json);
+                            msgs.push(json.into());
+                        }
                     }
-                } else {
-                    None
                 }
+                _ => {},
             }
-            _ => None,
-        }
+            stream::from_iter(msgs)
+        });
+        msgs.flatten()
     }
 }

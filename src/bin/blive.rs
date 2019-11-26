@@ -8,6 +8,8 @@ use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use std::thread;
 use std::time;
+use async_std::prelude::*;
+use async_std::task;
 
 fn user_color(dan: &Danmaku) -> Colour {
     if dan.is_admin {
@@ -164,12 +166,13 @@ fn main() {
 
         let room = Room::new(roomid);
 
-        loop {
-            for danmu in room.messages() {
-                if let Some(json) = danmu {
-                    process_message(json);
-                }
+        task::block_on(async {
+            let mut danmus = room.messages().await;
+            // println!("start danmu");
+            while let Some(danmu) = danmus.next().await {
+                // println!("{:?}", danmu);
+                process_message(danmu);
             }
-        }
+        });
     }
 }
