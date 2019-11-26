@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "bilibili-live-danmu"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "ansi_term 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bincode 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
