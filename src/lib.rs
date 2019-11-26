@@ -261,14 +261,8 @@ impl Room {
     }
 
     pub async fn messages(&self) -> impl stream::Stream<Item=BMessage> {
-        // Create an insecure (plain TCP) connection to the client. In this case no Box will be used,
-        // you will just get a TcpStream, giving you the ability to split the stream into a reader and writer (since SSL streams cannot be cloned).
-        // let client = ClientBuilder::new("ws://broadcastlv.chat.bilibili.com:2244/sub")
-        //     .unwrap()
-        //     .connect_insecure()
-        //     .unwrap();
-        // let url = url::Url::parse("wss://broadcastlv.chat.bilibili.com/sub").unwrap();
-        let url = url::Url::parse("ws://broadcastlv.chat.bilibili.com:2244/sub").unwrap();
+        let url = url::Url::parse("wss://broadcastlv.chat.bilibili.com/sub").unwrap();
+        // let url = url::Url::parse("ws://broadcastlv.chat.bilibili.com:2244/sub").unwrap();
         let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
         let (mut sender, receiver) = ws_stream.split();
         let obj = Obj::new(self.roomid);
@@ -278,19 +272,18 @@ impl Room {
 
         sender.send(Message::binary(pkg)).await.expect("Failed to send message");
 
-        let heart_beat = task::spawn(async move {
+        let _heart_beat = task::spawn(async move {
             loop {
                 let heart = Pkg::new(b"[object Object]".to_vec(), 2).into_bytes();
                 let messages = Message::binary(heart);
                 if let Ok(_) = sender.send(messages).await {
-                    println!("send heart beat!");
+                    // println!("send heart beat!");
                 } else {
                     println!("send heart beat error!");
                 };
                 task::sleep(time::Duration::from_secs(10)).await;
             }
         });
-        heart_beat.await;
 
         let msgs = receiver.map(|msg| {
             let mut msgs: Vec<BMessage> = Vec::new();

@@ -6,8 +6,6 @@ use clap::{App, Arg, SubCommand};
 use regex::Regex;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use std::thread;
-use std::time;
 use async_std::prelude::*;
 use async_std::task;
 
@@ -34,7 +32,6 @@ fn process_message(msg: BMessage) {
                 user_color(&danmu).bold().paint(danmu.username),
                 Colour::White.paint(danmu.messages)
             );
-            thread::sleep(time::Duration::from_millis(50));
         }
         BMessage::GIFT(gift) => {
             match gift.gift.as_str() {
