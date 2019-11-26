@@ -1,6 +1,6 @@
 [package]
 name = "bilibili-live-danmu"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["fplust <fplustlu@gmail.com>"]
 edition = "2018"
 

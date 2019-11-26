@@ -140,11 +140,7 @@ impl From<BMsg> for BMessage {
                     messages: v2string(&info[1]),
                     guard: info[7].as_i64().unwrap(),
                     is_admin: info[2][2].as_i64().unwrap() == 1,
-                    timestamp: info
-                        .as_array()
-                        .unwrap()
-                        .last()
-                        .unwrap()
+                    timestamp: info[9]
                         .get("ts")
                         .unwrap()
                         .as_i64()
