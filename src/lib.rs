@@ -7,6 +7,10 @@ use serde_json;
 use std::convert::TryInto;
 use std::io::Cursor;
 use std::time;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use url;
 use async_std::prelude::*;
 use async_std::{
@@ -210,10 +214,23 @@ pub struct BMsg {
 #[derive(Clone, Copy)]
 pub struct Room {
     roomid: i32,
-    // client: Client<Box<dyn NetworkStream + Send>>,
-    // receiver: Reader<TcpStream>,
-    // pkg: Vec<u8>,
-    // heart: Vec<u8>,
+}
+
+pub struct MsgStream {
+    _heart_beat: Option<task::JoinHandle<()>>,
+    stop: Arc<AtomicBool>,
+    pub stream: Box<dyn stream::Stream<Item=BMessage> + Unpin>,
+}
+
+impl Drop for MsgStream {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if self._heart_beat.is_some() {
+            task::block_on(async {
+                self._heart_beat.take().unwrap().await;
+            });
+        }
+    }
 }
 
 impl Room {
@@ -260,7 +277,7 @@ impl Room {
         Ok(res)
     }
 
-    pub async fn messages(&self) -> impl stream::Stream<Item=BMessage> {
+    pub async fn messages(&self) -> MsgStream {
         let url = url::Url::parse("wss://broadcastlv.chat.bilibili.com/sub").unwrap();
         // let url = url::Url::parse("ws://broadcastlv.chat.bilibili.com:2244/sub").unwrap();
         let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
@@ -272,17 +289,20 @@ impl Room {
 
         sender.send(Message::binary(pkg)).await.expect("Failed to send message");
 
+        let stop1 = Arc::new(AtomicBool::new(false));
+        let stop2 = stop1.clone();
         let _heart_beat = task::spawn(async move {
-            loop {
+            while !stop2.load(Ordering::Relaxed) {
                 let heart = Pkg::new(b"[object Object]".to_vec(), 2).into_bytes();
                 let messages = Message::binary(heart);
                 if let Ok(_) = sender.send(messages).await {
-                    // println!("send heart beat!");
+                    dbg!("send heart beat!");
                 } else {
                     println!("send heart beat error!");
                 };
                 task::sleep(time::Duration::from_secs(10)).await;
             }
+            println!("heart beat stop");
         });
 
         let msgs = receiver.map(|msg| {
@@ -293,12 +313,12 @@ impl Room {
                     let mut rdr = Cursor::new(data);
                     let mut offset = 0;
                     while offset < len {
-                        let of: u64 = offset.try_into().unwrap();
+                        let of: u64 = offset as u64;
                         rdr.set_position(of);
-                        let mut end: usize = rdr.read_i32::<BigEndian>().unwrap().try_into().unwrap();
+                        let mut end: usize = rdr.read_i32::<BigEndian>().unwrap() as usize;
                         end += offset;
                         rdr.set_position(of + 4);
-                        let mut start: usize = rdr.read_i16::<BigEndian>().unwrap().try_into().unwrap();
+                        let mut start: usize = rdr.read_i16::<BigEndian>().unwrap() as usize;
                         start += offset;
                         rdr.set_position(of + 8);
                         let dt = rdr.read_i32::<BigEndian>().unwrap();
@@ -318,6 +338,10 @@ impl Room {
             }
             stream::from_iter(msgs)
         });
-        msgs.flatten()
+        MsgStream {
+            _heart_beat: Some(_heart_beat),
+            stop: stop1,
+            stream: Box::new(msgs.flatten()),
+        }
     }
 }

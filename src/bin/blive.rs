@@ -166,7 +166,7 @@ fn main() {
         task::block_on(async {
             let mut danmus = room.messages().await;
             // println!("start danmu");
-            while let Some(danmu) = danmus.next().await {
+            while let Some(danmu) = danmus.stream.next().await {
                 // println!("{:?}", danmu);
                 process_message(danmu);
             }
