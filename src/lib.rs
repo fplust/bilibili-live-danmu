@@ -296,6 +296,7 @@ impl Room {
                 let heart = Pkg::new(b"[object Object]".to_vec(), 2).into_bytes();
                 let messages = Message::binary(heart);
                 if let Ok(_) = sender.send(messages).await {
+                    #[cfg(debug_assertions)]
                     dbg!("send heart beat!");
                 } else {
                     println!("send heart beat error!");

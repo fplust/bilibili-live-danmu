@@ -1,5 +1,5 @@
 use ansi_term::Colour;
-use bilibili_live_danmu::{BMessage, Danmaku, Room};
+use blive_danmu::{BMessage, Danmaku, Room};
 use browsercookie::{Browser, Browsercookies};
 use chrono::{Local, TimeZone};
 use clap::{App, Arg, SubCommand};
