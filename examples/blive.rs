@@ -8,6 +8,9 @@ use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use async_std::prelude::*;
 use async_std::task;
+use std::thread::sleep;
+use std::time::Duration;
+use tokio::runtime::Runtime;
 
 fn user_color(dan: &Danmaku) -> Colour {
     if dan.is_admin {
@@ -130,13 +133,16 @@ fn main() {
         let room = Room::new(roomid);
 
         let mut rl = Editor::<()>::new();
+        let mut rt = Runtime::new().unwrap();
         loop {
             let readline = rl.readline("输入要发送的弹幕: ");
             match readline {
                 Ok(line) => {
-                    println!("发送: {}", line);
-                    let res = room.send(&line, &cookie_header, csrf).unwrap();
-                    println!("{}", res);
+                    rt.block_on(async {
+                        println!("发送: {}", line);
+                        let res = room.send(&line, &cookie_header, csrf).await.unwrap();
+                        println!("{}", res);
+                    });
                 }
                 Err(ReadlineError::Interrupted) => {
                     println!("CTRL-C");
@@ -169,6 +175,7 @@ fn main() {
             while let Some(danmu) = danmus.stream.next().await {
                 // println!("{:?}", danmu);
                 process_message(danmu);
+                sleep(Duration::from_millis(50));
             }
         });
     }

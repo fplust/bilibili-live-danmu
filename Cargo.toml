@@ -10,13 +10,14 @@ edition = "2018"
 async-std = "1"
 url = "2.1"
 futures = "0.3"
-async-tungstenite = "*"
+async-tungstenite = { version = "0.3", features = ["async-std-runtime", "async-native-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 bincode = "1"
 byteorder = "1"
 chrono = "0.4"
-reqwest = "0.9"
+reqwest = { version = "0.10", features = ["json"]}
+tokio = "0.2"
 
 [dev-dependencies]
 clap = "2"

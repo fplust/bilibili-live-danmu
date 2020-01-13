@@ -17,7 +17,7 @@ use async_std::{
     task,
     stream,
 };
-use async_tungstenite::{
+use async_tungstenite::async_std::{
     connect_async,
 };
 use futures::{
@@ -194,7 +194,7 @@ impl From<BMsg> for BMessage {
                     uid: data.get("uid").unwrap().as_i64().unwrap(),
                     username: v2string(&data.get("user_info").unwrap().get("uname").unwrap()),
                     message: v2string(&data.get("message").unwrap()),
-                    message_jpn: v2string(&data.get("message_jpn").unwrap()),
+                    message_jpn: v2string(&data.get("message_trans").unwrap()),
                     price: data.get("price").unwrap().as_i64().unwrap(),
                 })
             }
@@ -238,7 +238,7 @@ impl Room {
         Self { roomid }
     }
 
-    pub fn send(
+    pub async fn send(
         &self,
         msg: &str,
         cookies: &str,
@@ -269,9 +269,9 @@ impl Room {
         let res: serde_json::Value = client
             .post("https://api.live.bilibili.com/msg/send")
             .form(&params)
-            .send()
+            .send().await
             .unwrap()
-            .json()
+            .json().await
             .unwrap();
         // println!("{}", res);
         Ok(res)
