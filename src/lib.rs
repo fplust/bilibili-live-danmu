@@ -12,12 +12,10 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use url;
-use async_std::prelude::*;
-use async_std::{
-    task,
-    stream,
-};
-use async_tungstenite::async_std::{
+use tokio::task;
+use tokio::time::delay_for;
+use tokio::stream;
+use async_tungstenite::tokio::{
     connect_async,
 };
 use futures::{
@@ -226,7 +224,8 @@ impl Drop for MsgStream {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         if self._heart_beat.is_some() {
-            task::block_on(async {
+            let mut rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
                 self._heart_beat.take().unwrap().await;
             });
         }
@@ -301,7 +300,7 @@ impl Room {
                 } else {
                     println!("send heart beat error!");
                 };
-                task::sleep(time::Duration::from_secs(10)).await;
+                delay_for(time::Duration::from_secs(10)).await;
             }
             println!("heart beat stop");
         });
@@ -337,7 +336,7 @@ impl Room {
                 }
                 _ => {},
             }
-            stream::from_iter(msgs)
+            stream::iter(msgs)
         });
         MsgStream {
             _heart_beat: Some(_heart_beat),

@@ -6,11 +6,10 @@ use clap::{App, Arg, SubCommand};
 use regex::Regex;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use async_std::prelude::*;
-use async_std::task;
 use std::thread::sleep;
 use std::time::Duration;
 use tokio::runtime::Runtime;
+use tokio::stream::StreamExt;
 
 fn user_color(dan: &Danmaku) -> Colour {
     if dan.is_admin {
@@ -169,7 +168,8 @@ fn main() {
 
         let room = Room::new(roomid);
 
-        task::block_on(async {
+        let mut rt = Runtime::new().unwrap();
+        rt.block_on(async {
             let mut danmus = room.messages().await;
             // println!("start danmu");
             while let Some(danmu) = danmus.stream.next().await {
