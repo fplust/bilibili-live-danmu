@@ -1,13 +1,15 @@
 use ansi_term::Colour;
-use bilibili_live_danmu::{BMessage, Danmaku, Room};
+use blive_danmu::{BMessage, Danmaku, Room};
 use browsercookie::{Browser, Browsercookies};
 use chrono::{Local, TimeZone};
 use clap::{App, Arg, SubCommand};
 use regex::Regex;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use std::thread;
-use std::time;
+use std::thread::sleep;
+use std::time::Duration;
+use tokio::runtime::Runtime;
+use tokio::stream::StreamExt;
 
 fn user_color(dan: &Danmaku) -> Colour {
     if dan.is_admin {
@@ -32,7 +34,6 @@ fn process_message(msg: BMessage) {
                 user_color(&danmu).bold().paint(danmu.username),
                 Colour::White.paint(danmu.messages)
             );
-            thread::sleep(time::Duration::from_millis(50));
         }
         BMessage::GIFT(gift) => {
             match gift.gift.as_str() {
@@ -131,13 +132,16 @@ fn main() {
         let room = Room::new(roomid);
 
         let mut rl = Editor::<()>::new();
+        let mut rt = Runtime::new().unwrap();
         loop {
             let readline = rl.readline("输入要发送的弹幕: ");
             match readline {
                 Ok(line) => {
-                    println!("发送: {}", line);
-                    let res = room.send(&line, &cookie_header, csrf).unwrap();
-                    println!("{}", res);
+                    rt.block_on(async {
+                        println!("发送: {}", line);
+                        let res = room.send(&line, &cookie_header, csrf).await.unwrap();
+                        println!("{}", res);
+                    });
                 }
                 Err(ReadlineError::Interrupted) => {
                     println!("CTRL-C");
@@ -164,12 +168,15 @@ fn main() {
 
         let room = Room::new(roomid);
 
-        loop {
-            for danmu in room.messages() {
-                if let Some(json) = danmu {
-                    process_message(json);
-                }
+        let mut rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let mut danmus = room.messages().await;
+            // println!("start danmu");
+            while let Some(danmu) = danmus.stream.next().await {
+                // println!("{:?}", danmu);
+                process_message(danmu);
+                sleep(Duration::from_millis(50));
             }
-        }
+        });
     }
 }
