@@ -217,7 +217,7 @@ pub struct Room {
 pub struct MsgStream {
     _heart_beat: Option<task::JoinHandle<()>>,
     stop: Arc<AtomicBool>,
-    pub stream: Box<dyn stream::Stream<Item=BMessage> + Unpin + Send>,
+    pub stream: Box<dyn stream::Stream<Item=BMessage> + Unpin>,
 }
 
 impl Drop for MsgStream {
