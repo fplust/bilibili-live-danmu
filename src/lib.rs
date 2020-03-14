@@ -217,16 +217,17 @@ pub struct Room {
 pub struct MsgStream {
     _heart_beat: Option<task::JoinHandle<()>>,
     stop: Arc<AtomicBool>,
-    pub stream: Box<dyn stream::Stream<Item=BMessage> + Unpin>,
+    pub stream: Box<dyn stream::Stream<Item=BMessage> + Unpin + Send>,
 }
 
 impl Drop for MsgStream {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         if self._heart_beat.is_some() {
-            let mut rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                self._heart_beat.take().unwrap().await;
+            // let mut rt = tokio::runtime::Runtime::new().unwrap();
+            let heart_beat = self._heart_beat.take().unwrap();
+            tokio::spawn(async move {
+                heart_beat.await.unwrap();
             });
         }
     }
