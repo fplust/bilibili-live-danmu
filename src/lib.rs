@@ -26,6 +26,8 @@ use async_tungstenite::tungstenite::{
     protocol::Message,
     // error::Error,
 };
+use libflate::zlib::Decoder;
+use std::io::Read;
 
 #[derive(Serialize)]
 struct Obj {
@@ -310,30 +312,7 @@ impl Room {
             let mut msgs: Vec<BMessage> = Vec::new();
             match msg.unwrap() {
                 Message::Binary(data) => {
-                    let len = data.len();
-                    let mut rdr = Cursor::new(data);
-                    let mut offset = 0;
-                    while offset < len {
-                        let of: u64 = offset as u64;
-                        rdr.set_position(of);
-                        let mut end: usize = rdr.read_i32::<BigEndian>().unwrap() as usize;
-                        end += offset;
-                        rdr.set_position(of + 4);
-                        let mut start: usize = rdr.read_i16::<BigEndian>().unwrap() as usize;
-                        start += offset;
-                        rdr.set_position(of + 8);
-                        let dt = rdr.read_i32::<BigEndian>().unwrap();
-                        offset = end;
-                        // println!("{} {} {} {} {}", len, of, start, end, dt);
-                        if dt == 5 {
-                            let data = rdr.get_ref();
-                            let section = &data[start..end];
-                            let json: BMsg = serde_json::from_slice(section).unwrap();
-                            // process_message(json);
-                            // println!("{:?}", json);
-                            msgs.push(json.into());
-                        }
-                    }
+                    parse_pkg(data, &mut msgs);
                 }
                 _ => {},
             }
@@ -343,6 +322,52 @@ impl Room {
             _heart_beat: Some(_heart_beat),
             stop: stop1,
             stream: Box::new(msgs.flatten()),
+        }
+    }
+}
+
+fn parse_pkg(data: Vec<u8>, msgs: &mut Vec<BMessage>) {
+    let len = data.len();
+    // println!("{:?}", data);
+    // println!("{:?}", data.clone().iter().map(|x| std::char::from_u32(*x as u32).unwrap()).collect::<Vec<char>>());
+    let mut rdr = Cursor::new(data);
+    let mut offset = 0;
+    while offset < len {
+        let of: u64 = offset as u64;
+        rdr.set_position(of);
+        let mut end: usize = rdr.read_i32::<BigEndian>().unwrap() as usize;
+        end += offset;
+        rdr.set_position(of + 4);
+        let mut start: usize = rdr.read_i16::<BigEndian>().unwrap() as usize;
+        start += offset;
+        rdr.set_position(of + 6);
+        let ct = rdr.read_i16::<BigEndian>().unwrap();
+        rdr.set_position(of + 8);
+        let dt = rdr.read_i32::<BigEndian>().unwrap();
+        offset = end;
+        // println!("{} {} {} {} {} {}", len, of, start, end, ct, dt);
+        if dt == 5 {
+            let data = rdr.get_ref();
+            let section = &data[start..end];
+            if ct == 2 {
+                let mut decoder = Decoder::new(section).unwrap();
+                let mut buf = Vec::new();
+                decoder.read_to_end(&mut buf).unwrap();
+                parse_pkg(buf, msgs);
+                // println!("{:?}", buf);
+                // json = serde_json::from_slice(&buf[16..]).ok();
+            } else {
+                let json: Option<BMsg> = serde_json::from_slice(section).ok();
+                match json {
+                    Some(j) => {
+                        // println!("{:?}", j);
+                        msgs.push(j.into());
+                    }
+                    None => {
+                        // println!("解析失败!");
+                    }
+                }
+            }
         }
     }
 }
