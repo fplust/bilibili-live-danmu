@@ -132,7 +132,7 @@ fn main() {
         let room = Room::new(roomid);
 
         let mut rl = Editor::<()>::new();
-        let mut rt = Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         loop {
             let readline = rl.readline("输入要发送的弹幕: ");
             match readline {
@@ -168,7 +168,7 @@ fn main() {
 
         let room = Room::new(roomid);
 
-        let mut rt = Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let mut danmus = room.messages().await;
             // println!("start danmu");

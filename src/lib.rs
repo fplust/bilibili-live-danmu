@@ -1,5 +1,7 @@
-use bincode;
-use byteorder::{BigEndian, ReadBytesExt};
+use bytes::{BytesMut, BufMut};
+use byteorder::{
+    BigEndian, ReadBytesExt
+};
 use chrono::Local;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
@@ -13,7 +15,7 @@ use std::sync::{
 };
 use url;
 use tokio::task;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 use tokio::stream;
 use async_tungstenite::tokio::{
     connect_async,
@@ -43,7 +45,7 @@ impl Obj {
         Self {
             uid: 0,
             roomid,
-            protover: 1,
+            protover: 2,
             platform: String::from("web"),
             clientver: String::from("1.5.15"),
         }
@@ -84,9 +86,15 @@ impl Pkg {
     }
 
     fn into_bytes(self) -> Vec<u8> {
-        let mut config = bincode::config();
-        config.big_endian();
-        let header_bytes = config.serialize(&self.header).unwrap();
+        // let config = bincode::options();
+        // config.with_big_endian();
+        // let header_bytes = config.serialize(&self.header).unwrap();
+        let mut header_bytes = BytesMut::with_capacity(16);
+        header_bytes.put_i32(self.header.len);
+        header_bytes.put_i16(self.header.a);
+        header_bytes.put_i16(self.header.b);
+        header_bytes.put_i32(self.header.dtype);
+        header_bytes.put_i32(self.header.c);
         header_bytes.into_iter().chain(self.body).collect()
         // bincode::serialize(self).unwrap()
     }
@@ -303,7 +311,7 @@ impl Room {
                 } else {
                     println!("send heart beat error!");
                 };
-                delay_for(time::Duration::from_secs(10)).await;
+                sleep(time::Duration::from_secs(10)).await;
             }
             println!("heart beat stop");
         });

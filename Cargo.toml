@@ -8,14 +8,15 @@ edition = "2018"
 
 [dependencies]
 #async-std = "1"
-tokio = { version = "0.2", features = ["stream"] }
-async-tungstenite = { version = "0.5", features = ["tokio-runtime", "tokio-tls"] }
+tokio = { version = "0.3", features = ["stream", "time", "rt", "rt-multi-thread"] }
+async-tungstenite = { version = "0.10", features = ["tokio-runtime", "tokio-rustls"] }
 # tokio-tungstenite = "0.9"
 url = "2.1"
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
-bincode = "1"
+# bincode = "1"
+bytes = "0.6"
 byteorder = "1"
 chrono = "0.4"
 reqwest = { version = "0.10", features = ["json"]}
