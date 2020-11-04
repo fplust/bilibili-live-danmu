@@ -7,10 +7,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#async-std = "1"
-tokio = { version = "0.3", features = ["stream", "time", "rt", "rt-multi-thread"] }
-async-tungstenite = { version = "0.10", features = ["tokio-runtime", "tokio-rustls"] }
-# tokio-tungstenite = "0.9"
+# tokio = { version = "0.3", features = ["stream", "time", "rt"] }
+# async-tungstenite = { version = "0.10", features = ["tokio-runtime", "tokio-rustls"] }
+tokio = { version = "0.2", features = ["stream", "time", "rt-core"] }
+async-tungstenite = { version = "0.9", features = ["tokio-runtime", "tokio-rustls"] }
 url = "2.1"
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }

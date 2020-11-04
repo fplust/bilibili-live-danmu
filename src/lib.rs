@@ -15,7 +15,9 @@ use std::sync::{
 };
 use url;
 use tokio::task;
-use tokio::time::sleep;
+use tokio::time::delay_for;
+// tokio 0.3
+// use tokio::time::sleep;
 use tokio::stream;
 use async_tungstenite::tokio::{
     connect_async,
@@ -311,7 +313,9 @@ impl Room {
                 } else {
                     println!("send heart beat error!");
                 };
-                sleep(time::Duration::from_secs(10)).await;
+                delay_for(time::Duration::from_secs(10)).await;
+                // tokio 0.3
+                // sleep(time::Duration::from_secs(10)).await;
             }
             println!("heart beat stop");
         });

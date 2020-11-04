@@ -8,7 +8,7 @@ use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use std::thread::sleep;
 use std::time::Duration;
-use tokio::runtime::Runtime;
+use tokio::runtime;
 use tokio::stream::StreamExt;
 
 fn user_color(dan: &Danmaku) -> Colour {
@@ -132,7 +132,9 @@ fn main() {
         let room = Room::new(roomid);
 
         let mut rl = Editor::<()>::new();
-        let rt = Runtime::new().unwrap();
+        let mut rt = runtime::Runtime::new().unwrap();
+        // tokio 0.3
+        // let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
         loop {
             let readline = rl.readline("输入要发送的弹幕: ");
             match readline {
@@ -168,7 +170,9 @@ fn main() {
 
         let room = Room::new(roomid);
 
-        let rt = Runtime::new().unwrap();
+        let mut rt = runtime::Runtime::new().unwrap();
+        // tokio 0.3
+        // let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async {
             let mut danmus = room.messages().await;
             // println!("start danmu");
