@@ -9,7 +9,7 @@ use rustyline::Editor;
 use std::thread::sleep;
 use std::time::Duration;
 use tokio::runtime;
-use tokio::stream::StreamExt;
+use tokio_stream::StreamExt;
 
 fn user_color(dan: &Danmaku) -> Colour {
     if dan.is_admin {
@@ -132,9 +132,7 @@ fn main() {
         let room = Room::new(roomid);
 
         let mut rl = Editor::<()>::new();
-        let mut rt = runtime::Runtime::new().unwrap();
-        // tokio 0.3
-        // let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
         loop {
             let readline = rl.readline("输入要发送的弹幕: ");
             match readline {
@@ -170,9 +168,7 @@ fn main() {
 
         let room = Room::new(roomid);
 
-        let mut rt = runtime::Runtime::new().unwrap();
-        // tokio 0.3
-        // let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async {
             let mut danmus = room.messages().await;
             // println!("start danmu");
