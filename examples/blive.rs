@@ -1,11 +1,12 @@
 use ansi_term::Colour;
-use blive_danmu::{BMessage, Danmaku, Room};
-use browsercookie::{Browser, Browsercookies};
+use blive_danmu::Room;
+use blive_danmu::msgs::{BMessage, Danmaku};
+// use browsercookie::{Browser, Browsercookies};
 use chrono::{Local, TimeZone};
 use clap::{App, Arg, SubCommand};
-use regex::Regex;
-use rustyline::error::ReadlineError;
-use rustyline::Editor;
+// use regex::Regex;
+// use rustyline::error::ReadlineError;
+// use rustyline::Editor;
 use std::thread::sleep;
 use std::time::Duration;
 use tokio::runtime;
@@ -50,7 +51,7 @@ fn process_message(msg: BMessage) {
         BMessage::SuperChat(superchat) => {
             println!(
                 "{}: {}元 {}",
-                Colour::Red.bold().paint(superchat.username),
+                Colour::Red.bold().paint(superchat.user_info.uname),
                 superchat.price,
                 superchat.message,
             );
@@ -80,6 +81,7 @@ fn process_message(msg: BMessage) {
                 }
             }
         }
+        _ => {}
     }
 }
 
@@ -89,6 +91,7 @@ fn main() {
         .version(version)
         .author("fplust. <fplustlu@gmail.com>")
         .about("bilibili 直播间弹幕机")
+        /*
         .subcommand(
             SubCommand::with_name("send").about("发送弹幕").arg(
                 Arg::with_name("ID")
@@ -98,6 +101,7 @@ fn main() {
                     .index(1),
             ),
         )
+        */
         .subcommand(
             SubCommand::with_name("view").about("查看弹幕").arg(
                 Arg::with_name("ID")
@@ -108,6 +112,7 @@ fn main() {
             ),
         )
         .get_matches();
+    /*
     if let Some(matches) = matches.subcommand_matches("send") {
         let roomid: i32 = matches
             .value_of("ID")
@@ -158,6 +163,7 @@ fn main() {
             }
         }
     }
+    */
     if let Some(matches) = matches.subcommand_matches("view") {
         let roomid: i32 = matches
             .value_of("ID")
@@ -170,11 +176,11 @@ fn main() {
 
         let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async {
-            let mut danmus = room.messages().await;
+            let mut danmus = room.messages().await.unwrap();
             // println!("start danmu");
             while let Some(danmu) = danmus.stream.next().await {
                 // println!("{:?}", danmu);
-                process_message(danmu);
+                process_message(danmu.unwrap());
                 sleep(Duration::from_millis(50));
             }
         });

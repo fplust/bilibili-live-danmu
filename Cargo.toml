@@ -1,6 +1,6 @@
 [package]
 name = "bilibili-live-danmu"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["fplust <fplustlu@gmail.com>"]
 edition = "2021"
 
@@ -18,16 +18,17 @@ serde_json = "1.0.68"
 bytes = "1.1.0"
 byteorder = "1.4.3"
 chrono = "0.4.19"
-reqwest = { version = "0.11.6", features = ["json"] }
+# reqwest = { version = "0.11.6", features = ["json"] }
 flate2 = "1.0.22"
+thiserror = "1.0"
 
 [dev-dependencies]
 clap = "2.33.3"
 # browsercookie-rs = "0.1"
-browsercookie-rs = { path = "../browsercookie-rs" }
+# browsercookie-rs = { path = "../browsercookie-rs" }
 regex = "1.5.4"
 ansi_term = "0.12.1"
-rustyline = "9.0.0"
+# rustyline = "9.0.0"
 
 [lib]
 name = "blive_danmu"
