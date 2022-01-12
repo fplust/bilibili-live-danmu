@@ -2,7 +2,7 @@ use ansi_term::Colour;
 use blive_danmu::Room;
 use blive_danmu::msgs::{BMessage, Danmaku};
 // use browsercookie::{Browser, Browsercookies};
-use chrono::{Local, TimeZone};
+use time::{OffsetDateTime, format_description, UtcOffset};
 use clap::{App, Arg, SubCommand};
 // use regex::Regex;
 // use rustyline::error::ReadlineError;
@@ -28,10 +28,12 @@ fn process_message(msg: BMessage) {
             if danmu.is_gift {
                 return;
             }
-            let date_time = Local.timestamp(danmu.timestamp, 0);
+            let date_time = OffsetDateTime::from_unix_timestamp(danmu.timestamp).unwrap();
+            let local_datetime = date_time.to_offset(UtcOffset::from_hms(8, 0, 0).unwrap());
+            let format = format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]").unwrap();
             println!(
                 "[{}] {}: {}",
-                date_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+                local_datetime.format(&format).unwrap().to_string(),
                 user_color(&danmu).bold().paint(danmu.username),
                 Colour::White.paint(danmu.messages)
             );
@@ -177,7 +179,7 @@ fn main() {
         let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async {
             let mut danmus = room.messages().await.unwrap();
-            // println!("start danmu");
+            println!("start danmu");
             while let Some(danmu) = danmus.stream.next().await {
                 // println!("{:?}", danmu);
                 process_message(danmu.unwrap());

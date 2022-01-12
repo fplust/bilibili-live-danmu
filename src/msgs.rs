@@ -45,11 +45,12 @@ pub enum BMessage {
     GIFT(Gift),
     SuperChat(SuperChat),
     BMSG(BMsg),
+    HB,
 }
 
 #[inline]
 fn v2string(value: &serde_json::Value) -> String {
-    value.as_str().unwrap().to_string()
+    value.as_str().unwrap_or_default().to_string()
 }
 
 impl From<BMsg> for BMessage {
@@ -81,9 +82,9 @@ impl From<BMsg> for BMessage {
                 }
                 BMessage::GIFT(Gift {
                     uid: data.get("uid").unwrap().as_i64().unwrap(),
-                    username: v2string(&data.get("uname").unwrap()),
-                    action: v2string(&data.get("action").unwrap()),
-                    gift: v2string(&data.get("giftName").unwrap()),
+                    username: v2string(data.get("uname").unwrap()),
+                    action: v2string(data.get("action").unwrap()),
+                    gift: v2string(data.get("giftName").unwrap()),
                     amount: data.get("num").unwrap().as_i64().unwrap(),
                     value: value / 1000,
                     guard_type: 0,
@@ -94,9 +95,9 @@ impl From<BMsg> for BMessage {
                 let value = data.get("price").unwrap().as_i64().unwrap();
                 BMessage::GIFT(Gift {
                     uid: data.get("uid").unwrap().as_i64().unwrap(),
-                    username: v2string(&data.get("username").unwrap()),
+                    username: v2string(data.get("username").unwrap()),
                     action: "购买".into(),
-                    gift: v2string(&data.get("gift_name").unwrap()),
+                    gift: v2string(data.get("gift_name").unwrap()),
                     amount: data.get("num").unwrap().as_i64().unwrap(),
                     value: value / 1000,
                     guard_type: data.get("guard_level").unwrap().as_i64().unwrap(),
