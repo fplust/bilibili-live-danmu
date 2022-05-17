@@ -1,12 +1,8 @@
 use ansi_term::Colour;
 use blive_danmu::Room;
 use blive_danmu::msgs::{BMessage, Danmaku};
-// use browsercookie::{Browser, Browsercookies};
 use time::{OffsetDateTime, format_description, UtcOffset};
-use clap::{App, Arg, SubCommand};
-// use regex::Regex;
-// use rustyline::error::ReadlineError;
-// use rustyline::Editor;
+use clap::{Arg, Command};
 use std::thread::sleep;
 use std::time::Duration;
 use tokio::runtime;
@@ -89,83 +85,20 @@ fn process_message(msg: BMessage) {
 
 fn main() {
     let version = env!("CARGO_PKG_VERSION");
-    let matches = App::new("bilibili-live-danmu")
+    let matches = Command::new("bilibili-live-danmu")
         .version(version)
         .author("fplust. <fplustlu@gmail.com>")
         .about("bilibili 直播间弹幕机")
-        /*
         .subcommand(
-            SubCommand::with_name("send").about("发送弹幕").arg(
-                Arg::with_name("ID")
+            Command::new("view").about("查看弹幕").arg(
+                Arg::new("ID")
                     .required(true)
-                    .multiple(false)
-                    .help("直播间 id")
-                    .index(1),
-            ),
-        )
-        */
-        .subcommand(
-            SubCommand::with_name("view").about("查看弹幕").arg(
-                Arg::with_name("ID")
-                    .required(true)
-                    .multiple(false)
+                    .multiple_occurrences(false)
                     .help("直播间 id")
                     .index(1),
             ),
         )
         .get_matches();
-    /*
-    if let Some(matches) = matches.subcommand_matches("send") {
-        let roomid: i32 = matches
-            .value_of("ID")
-            .unwrap()
-            .parse()
-            .expect("房间号需为整数");
-        // println!("{}", roomid);
-        let mut bc = Browsercookies::new();
-        let domain_regex = Regex::new("bilibili").unwrap();
-        bc.from_browser(Browser::Firefox, &domain_regex)
-            .expect("Failed to get firefox browser cookies");
-        // println!("{:?}", &bc.cj);
-        let csrf = bc
-            .cj
-            .get("bili_jct")
-            .expect("请使用firefox登录后重试")
-            .value();
-        // println!("{:?}", csrf);
-
-        let cookie_header = bc.to_header(&domain_regex).unwrap();
-
-        let room = Room::new(roomid);
-
-        let mut rl = Editor::<()>::new();
-        let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        loop {
-            let readline = rl.readline("输入要发送的弹幕: ");
-            match readline {
-                Ok(line) => {
-                    rt.block_on(async {
-                        println!("发送: {}", line);
-                        let res = room.send(&line, &cookie_header, csrf).await.unwrap();
-                        println!("{}", res);
-                    });
-                }
-                Err(ReadlineError::Interrupted) => {
-                    println!("CTRL-C");
-                    break;
-                }
-                Err(ReadlineError::Eof) => {
-                    println!("CTRL-D");
-                    break;
-                }
-                Err(err) => {
-                    println!("Error: {:?}", err);
-                    break;
-                }
-            }
-        }
-    }
-    */
     if let Some(matches) = matches.subcommand_matches("view") {
         let roomid: i32 = matches
             .value_of("ID")

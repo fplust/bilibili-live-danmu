@@ -4,7 +4,6 @@ use byteorder::{
     BigEndian, ReadBytesExt
 };
 // use chrono::Local;
-// use reqwest::header;
 use serde::Serialize;
 use serde_json;
 use std::convert::TryInto;
@@ -149,47 +148,6 @@ impl Room {
     pub fn new(roomid: i32) -> Self {
         Self { roomid }
     }
-
-    /*
-    pub async fn send(
-        &self,
-        msg: &str,
-        cookies: &str,
-        csrf_token: &str,
-    ) -> Result<serde_json::Value, DanmukuError> {
-        let mut headers = header::HeaderMap::new();
-        headers.insert(
-            header::COOKIE,
-            header::HeaderValue::from_str(&cookies).unwrap(),
-        );
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .unwrap();
-        let now = Local::now().timestamp();
-        let params = [
-            ("color", "16777215"),
-            ("fontsize", "25"),
-            ("mode", "1"),
-            ("msg", msg),
-            ("rnd", &format!("{}", now)),
-            ("roomid", &format!("{}", self.roomid)),
-            ("bubble", "0"),
-            ("csrf_token", csrf_token),
-            ("csrf", csrf_token),
-        ];
-        let res: serde_json::Value = client
-            .post("https://api.live.bilibili.com/msg/send")
-            .form(&params)
-            .send().await
-            .unwrap()
-            .json().await
-            .unwrap();
-        // println!("{}", res);
-        Ok(res)
-    }
-    */
 
     pub async fn messages(&self) -> Result<MsgStream, DanmukuError> {
         let url = url::Url::parse("wss://broadcastlv.chat.bilibili.com/sub").or(Err(DanmukuError::InternalError))?;
