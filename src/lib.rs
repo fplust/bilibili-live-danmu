@@ -5,7 +5,6 @@ use byteorder::{
 };
 // use chrono::Local;
 use serde::Serialize;
-use serde_json;
 use std::convert::TryInto;
 use std::io::Cursor;
 use std::time;
@@ -13,7 +12,6 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use url;
 use tokio::task;
 use tokio::time::sleep;
 use tokio_stream as stream;
@@ -167,7 +165,7 @@ impl Room {
         let hb_message = Message::binary(heart);
         let _heart_beat = task::spawn(async move {
             while !stop2.load(Ordering::Relaxed) {
-                if let Ok(_) = sender.send(hb_message.clone()).await {
+                if (sender.send(hb_message.clone()).await).is_ok() {
                     #[cfg(debug_assertions)]
                     dbg!("send heart beat!");
                 } else {

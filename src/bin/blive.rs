@@ -29,7 +29,7 @@ fn process_message(msg: BMessage) {
             let format = format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]").unwrap();
             println!(
                 "[{}] {}: {}",
-                local_datetime.format(&format).unwrap().to_string(),
+                local_datetime.format(&format).unwrap(),
                 user_color(&danmu).bold().paint(danmu.username),
                 Colour::White.paint(danmu.messages)
             );
